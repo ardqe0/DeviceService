@@ -1,0 +1,351 @@
+@page "/servis-fisleri"
+@using System.Globalization
+
+<PageTitle>Servis Fişleri</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <h1>Servis Fişleri</h1>
+        <p>Servis kayıtlarını oluşturun, filtreleyin ve durumlarını yönetin.</p>
+    </div>
+    @if (Session.IsService)
+    {
+        <button type="button" class="button primary" @onclick="OpenCreate">Yeni Servis Fişi</button>
+    }
+</section>
+@if (!string.IsNullOrWhiteSpace(operationMessage))
+{
+    <p class="message @(operationSuccess ? "success" : "error")">@operationMessage</p>
+}
+
+@if (!Session.IsService)
+{
+    <section class="empty-state">Bu sayfayı görüntülemek için servis hesabıyla giriş yapmalısınız.</section>
+}
+else
+{
+    <section class="toolbar">
+        <select @bind="statusFilter">
+            <option value="-1">Tüm durumlar</option>
+            @foreach (var option in statusOptions)
+            {
+                <option value="@option.Value">@option.Text</option>
+            }
+        </select>
+        <span>@FilteredTickets.Count() servis fişi</span>
+    </section>
+
+    @if (loading)
+    {
+        <div class="loading">Servis fişleri yükleniyor...</div>
+    }
+    else if (!FilteredTickets.Any())
+    {
+        <div class="empty-state">Bu filtreye uygun servis fişi bulunamadı.</div>
+    }
+    else
+    {
+        <div class="ticket-list">
+            @foreach (var ticket in FilteredTickets)
+            {
+                <article class="ticket-row">
+                    <div><strong class="ticket-number">@ticket.TicketNumber</strong><span>@ticket.CustomerName</span></div>
+                    <div><span class="cell-label">Cihaz</span><strong>@ticket.DeviceModel</strong></div>
+                    <div><span class="cell-label">Tarih</span><strong>@ticket.CreatedDate.ToString("dd.MM.yyyy HH:mm")</strong></div>
+                    <span class="status">@ticket.Status</span>
+                    <button type="button" class="button outline compact" @onclick="() => OpenDetail(ticket.Id)">Detay</button>
+                </article>
+            }
+        </div>
+    }
+}
+
+@if (showCreate)
+{
+    <div class="modal-backdrop" @onclick="CloseCreate">
+        <section class="modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <div>
+                    <span class="eyebrow">Yeni kayıt</span>
+                    <h2>Servis Fişi Oluştur</h2>
+                </div>
+                <button type="button" class="icon-button" @onclick="CloseCreate">×</button>
+            </div>
+            <div class="form-grid">
+                <div><label>Fiş No</label><input value="@newTicketNumber" readonly /></div>
+                <div>
+                    <label>Müşteri</label>
+                    <select @bind="selectedCustomerId">
+                        <option value="0">Müşteri seçin</option>
+                        <option value="-1">Müşteri kayıtlı değil</option>
+                        @foreach (var c in customers)
+                        {
+                            <option value="@c.Id">@c.FirstName @c.LastName - @c.PhoneNumber</option>
+                        }
+                    </select>
+                </div>
+                @if (selectedCustomerId == -1)
+                {
+                    <div><label>Ad</label><input @bind="newCustomer.FirstName" /></div>
+                    <div><label>Soyad</label><input @bind="newCustomer.LastName" /></div>
+                    <div><label>Telefon</label><input type="tel" @bind="newCustomer.PhoneNumber" /></div>
+                    <div><label>E-posta</label><input type="email" @bind="newCustomer.Email" /></div>
+                }
+                <div><label>Cihaz adı / model</label><input @bind="createRequest.DeviceName" /></div>
+                <div><label>Marka</label><input @bind="createRequest.Brand" /></div>
+                <div><label>Seri no</label><input @bind="createRequest.SerialNumber" /></div>
+                <div><label>Tahmini ücret</label><input type="number" step="0.01" @bind="createRequest.EstimatedPrice" /></div>
+                <div class="span-2"><label>Notlar</label><textarea @bind="createRequest.Notes"></textarea></div>
+                <div><label>Tarih</label><input type="date" max="@DateTime.Today.ToString("yyyy-MM-dd")" @bind="createdDate" /></div>
+                <div><label>Saat</label><input type="time" step="60" @bind="createdTime" /></div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(createError))
+            {
+                <p class="message error">@createError</p>
+            }
+            <div class="modal-actions">
+                <button type="button" class="button secondary" @onclick="CloseCreate">Vazgeç</button>
+                <button type="button" class="button primary" @onclick="CreateTicket">Fişi Oluştur</button>
+            </div>
+        </section>
+    </div>
+}
+
+@if (detail is not null)
+{
+    <div class="modal-backdrop" @onclick="CloseDetail">
+        <section class="modal wide" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <div>
+                    <span class="eyebrow">@detail.TicketNumber</span>
+                    <h2>Servis Fişi Detayı</h2>
+                </div>
+                <button type="button" class="icon-button" @onclick="CloseDetail">×</button>
+            </div>
+            <div class="detail-grid">
+                <div class="panel flat">
+                    <div class="form-grid">
+                        <div><label>Müşteri</label><input value="@detail.CustomerName" readonly /></div>
+                        <div><label>Cihaz</label><input value="@detail.DeviceModel" readonly /></div>
+                        <div><label>Marka</label><input value="@detail.Brand" readonly /></div>
+                        <div><label>Seri no</label><input value="@(detail.SerialNumber ?? "-")" readonly /></div>
+                        <div><label>Kayıt tarihi</label><input value="@detail.CreatedDate.ToString("dd.MM.yyyy HH:mm")" readonly /></div>
+                        <div>
+                            <label>Durum</label>
+                            <select @bind="detailStatus">
+                                @foreach (var option in statusOptions)
+                                {
+                                    <option value="@option.Value">@option.Text</option>
+                                }
+                            </select>
+                        </div>
+                        <div><label>Tahmini ücret</label><input type="number" step="0.01" @bind="detailPrice" /></div>
+                        <div class="span-2"><label>Notlar</label><textarea @bind="detailNotes"></textarea></div>
+                        <div class="span-2"><label>Takip bağlantısı</label><input value="@(detail.TrackingUrl ?? "Takip bağlantısı oluşturuluyor.")" readonly /></div>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(detailMessage))
+                    {
+                        <p class="message success">@detailMessage</p>
+                    }
+                    <div class="modal-actions split">
+                        <button type="button" class="button teal" @onclick="SendEmail">E-postayı Yeniden Gönder</button>
+                        <button type="button" class="button primary" @onclick="SaveDetail">Değişiklikleri Kaydet</button>
+                    </div>                </div>
+                <div class="timeline compact-timeline">
+                    <h3>Durum Geçmişi</h3>
+                    @foreach (var item in detail.StatusHistories.OrderByDescending(x => x.ChangedAt))
+                    {
+                        <div class="timeline-item">
+                            <span class="timeline-dot"></span>
+                            <div>
+                                <strong>@item.StatusText</strong>
+                                <time>@item.ChangedAt.ToString("dd.MM.yyyy HH:mm")</time>
+                                @if (!string.IsNullOrWhiteSpace(item.Notes))
+                                {
+                                    <p>@item.Notes</p>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+        </section>
+    </div>
+}
+
+@code {
+    private AuthSession Session => AuthSession.Current;
+    private List<ServiceTicketListItem> tickets = new();
+    private List<Customer> customers = new();
+    private List<StatusOptionItem> statusOptions = new();
+    private bool loading = true;
+    private bool showCreate;
+    private int statusFilter = -1;
+    private int selectedCustomerId;
+    private int detailStatus;
+    private string newTicketNumber = string.Empty;
+    private DateTime createdDate = DateTime.Today;
+    private TimeOnly createdTime = TimeOnly.FromDateTime(DateTime.Now);
+    private string createError = string.Empty;
+    private string detailPrice = string.Empty;
+    private string detailNotes = string.Empty;
+    private string detailMessage = string.Empty;
+    private string operationMessage = string.Empty;
+    private bool operationSuccess;
+    private CreateServiceTicketRequest createRequest = new();
+    private NewTicketCustomerRequest newCustomer = new();
+    private ServiceTicketDetailItem? detail;
+    private IEnumerable<ServiceTicketListItem> FilteredTickets => statusFilter < 0 ? tickets : tickets.Where(x => x.StatusValue == statusFilter);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsService)
+        {
+            loading = false;
+            return;
+        }
+
+        statusOptions = await Api.GetServiceTicketStatusOptionsAsync();
+        await LoadTickets();
+    }
+
+    private async Task LoadTickets()
+    {
+        loading = true;
+        tickets = (await Api.GetServiceTicketListAsync())
+            .OrderByDescending(x => x.Id)
+            .ToList();
+        loading = false;
+    }
+
+    private async Task OpenCreate()
+    {
+        customers = await Api.GetCustomersAsync();
+        showCreate = true;
+
+
+        newTicketNumber = await Api.GetNextServiceTicketNumberAsync();
+        selectedCustomerId = 0;
+        createRequest = new();
+        newCustomer = new();
+        createdDate = DateTime.Today;
+        createdTime = TimeOnly.FromDateTime(DateTime.Now);
+        createError = string.Empty;
+    }
+
+    private void CloseCreate() => showCreate = false;
+
+    private async Task CreateTicket()
+    {
+        if (selectedCustomerId == 0 || string.IsNullOrWhiteSpace(createRequest.DeviceName) || string.IsNullOrWhiteSpace(createRequest.Brand))
+        {
+            createError = "Müşteri, cihaz adı ve marka zorunludur.";
+            return;
+        }
+
+        if (selectedCustomerId == -1 &&
+            (string.IsNullOrWhiteSpace(newCustomer.FirstName) ||
+             string.IsNullOrWhiteSpace(newCustomer.LastName) ||
+             string.IsNullOrWhiteSpace(newCustomer.PhoneNumber) ||
+             string.IsNullOrWhiteSpace(newCustomer.Email)))
+        {
+            createError = "Yeni müşteri için ad, soyad, telefon ve e-posta zorunludur.";
+            return;
+        }
+
+        var createdAt = createdDate.Date.Add(createdTime.ToTimeSpan());
+        if (createdAt > DateTime.Now)
+        {
+            createError = "İleri tarih veya saat seçilemez.";
+            return;
+        }
+
+        createRequest.CustomerId = selectedCustomerId > 0 ? selectedCustomerId : null;
+        createRequest.NewCustomer = selectedCustomerId == -1 ? newCustomer : null;
+        createRequest.CreatedDate = createdAt;
+        var result = await Api.CreateServiceTicketAsync(createRequest);
+
+        if (result is null)
+        {
+            createError = string.IsNullOrWhiteSpace(Api.LastErrorMessage) ? "Servis fişi oluşturulamadı." : Api.LastErrorMessage;
+            return;
+        }
+
+        operationSuccess = result.EmailSent;
+        operationMessage = result.EmailMessage ?? (result.EmailSent ? "Servis fişi oluşturuldu ve e-posta gönderildi." : "Servis fişi oluşturuldu ancak e-posta gönderilemedi.");
+        showCreate = false;
+        await LoadTickets();
+    }
+
+    private async Task OpenDetail(int id)
+    {
+        detail = await Api.GetServiceTicketDetailAsync(id);
+        detailMessage = string.Empty;
+
+        if (detail is null)
+        {
+            return;
+        }
+
+        detailStatus = detail.StatusValue;
+        detailPrice = detail.EstimatedPrice?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        detailNotes = detail.Notes ?? string.Empty;
+    }
+
+    private void CloseDetail()
+    {
+        detail = null;
+    }
+    private async Task SaveDetail()
+    {
+        if (detail is null)
+        {
+            return;
+        }
+
+        decimal? price = null;
+        if (!string.IsNullOrWhiteSpace(detailPrice))
+        {
+            if (!decimal.TryParse(detailPrice, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed))
+            {
+                detailMessage = "Tahmini ücret geçerli bir sayı olmalıdır.";
+                return;
+            }
+
+            price = parsed;
+        }
+
+        var updated = await Api.UpdateServiceTicketAsync(detail.Id, new UpdateServiceTicketRequest { Status = detailStatus, EstimatedPrice = price, Notes = detailNotes });
+
+        if (updated is null)
+        {
+            detailMessage = "Değişiklikler kaydedilemedi.";
+            return;
+        }
+
+        detail = updated;
+        detailStatus = updated.StatusValue;
+        detailMessage = "Değişiklikler kaydedildi.";
+        await LoadTickets();
+    }
+    private async Task SendEmail()
+    {
+        if (detail is null)
+        {
+            return;
+        }
+
+        var result = await Api.SendEmailAsync(detail.Id);
+        if (result is null)
+        {
+            detailMessage = string.IsNullOrWhiteSpace(Api.LastErrorMessage)
+                ? "E-posta gönderilemedi."
+                : Api.LastErrorMessage;
+            return;
+        }
+
+        detail.TrackingUrl = result.TrackingUrl;
+        detailMessage = result.Message;
+    }
+}

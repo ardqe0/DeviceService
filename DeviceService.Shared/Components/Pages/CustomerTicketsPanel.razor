@@ -1,0 +1,129 @@
+@implements IAsyncDisposable
+
+@if (loading)
+{
+    <div class="loading">Servis fişleri yükleniyor...</div>
+}
+else if (dashboard is null)
+{
+    <section class="empty-state">Servis fişleri yüklenemedi.</section>
+}
+else
+{
+    <section class="list-section">
+        <div class="section-title">
+            <h2>Kayıtlı Servis Fişleri</h2>
+            <span>@dashboard.Tickets.Count kayıt</span>
+        </div>
+        @if (dashboard.Tickets.Count == 0)
+        {
+            <div class="empty-state">Henüz kayıtlı servis fişiniz bulunmuyor.</div>
+        }
+        else
+        {
+            <div class="card-grid">
+                @foreach (var ticket in dashboard.Tickets)
+                {
+                    <article class="record-card ticket-card">
+                        <div class="card-line"><h3>@ticket.TicketNumber</h3><span class="status">@ticket.Status</span></div>
+                        <p><strong>@ticket.Brand @ticket.DeviceName</strong></p>
+                        <p>Seri no: @(ticket.SerialNumber ?? "-")</p>
+                        <p>Kayıt: @ticket.CreatedDate.ToString("dd.MM.yyyy HH:mm")</p>
+                        <button type="button" class="button outline full" @onclick="() => ToggleDeviceStatus(ticket.Id)">
+                            @(expandedTicketIds.Contains(ticket.Id) ? "Durum Görünümünü Kapat" : "Cihazın Durumunu Görüntüle")
+                        </button>
+                        @if (expandedTicketIds.Contains(ticket.Id))
+                        {
+                            <section class="tracking-result customer-tracking-result">
+                                <div class="device-summary">
+                                    <div>
+                                        <span class="eyebrow">Güncel durum</span>
+                                        <h3>@ticket.Status</h3>
+                                    </div>
+                                    <dl>
+                                        <div><dt>Marka</dt><dd>@ticket.Brand</dd></div>
+                                        <div><dt>Model</dt><dd>@ticket.DeviceName</dd></div>
+                                        <div><dt>Seri No</dt><dd>@(ticket.SerialNumber ?? "-")</dd></div>
+                                        <div><dt>Tahmini ücret</dt><dd>@(ticket.EstimatedPrice?.ToString("C2") ?? "Belirtilmedi")</dd></div>
+                                    </dl>
+                                </div>
+                                <div class="timeline">
+                                    <h3>Durum Geçmişi</h3>
+                                    @foreach (var item in ticket.StatusHistories.OrderByDescending(x => x.ChangedAt))
+                                    {
+                                        <div class="timeline-item">
+                                            <span class="timeline-dot"></span>
+                                            <div>
+                                                <strong>@item.Status</strong>
+                                                <time>@item.ChangedAt.ToString("dd.MM.yyyy HH:mm")</time>
+                                                @if (!string.IsNullOrWhiteSpace(item.Notes))
+                                                {
+                                                    <p>@item.Notes</p>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </section>
+                        }
+                    </article>
+                }
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private global::DeviceService.Services.CustomerDashboard? dashboard;
+    private bool loading = true;
+    private readonly HashSet<int> expandedTicketIds = new();
+    private readonly CancellationTokenSource refreshCancellation = new();
+    private Task? refreshTask;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardAsync();
+        refreshTask = RefreshDashboardAsync(refreshCancellation.Token);
+    }
+
+    private async Task LoadDashboardAsync()
+    {
+        dashboard = await Api.GetCustomerDashboardAsync();
+        loading = false;
+    }
+
+    private async Task RefreshDashboardAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                var refreshedDashboard = await Api.GetCustomerDashboardAsync();
+                if (refreshedDashboard is null)
+                    continue;
+
+                dashboard = refreshedDashboard;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void ToggleDeviceStatus(int ticketId)
+    {
+        if (!expandedTicketIds.Add(ticketId))
+            expandedTicketIds.Remove(ticketId);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        refreshCancellation.Cancel();
+        if (refreshTask is not null)
+            await refreshTask;
+
+        refreshCancellation.Dispose();
+    }
+}

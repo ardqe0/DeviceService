@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Cihaz Servisi Ön Plan İkonu</title>
+  <desc id="desc">Turuncu, pembe ve mor geçişli zeminde telefon, dişli ve anahtar simgesi.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFA928"/>
+      <stop offset=".48" stop-color="#FF3A72"/>
+      <stop offset="1" stop-color="#3E21C8"/>
+    </linearGradient>
+    <linearGradient id="gear" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFD31A"/>
+      <stop offset="1" stop-color="#FF6A18"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#D9DCE6"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#1C0A59" flood-opacity=".34"/>
+    </filter>
+  </defs>
+
+  <rect x="32" y="32" width="448" height="448" rx="108" fill="url(#bg)"/>
+
+  <g>
+    <rect x="112" y="86" width="232" height="338" rx="40" fill="none" stroke="#fff" stroke-width="18"/>
+    <rect x="188" y="108" width="80" height="12" rx="6" fill="#fff"/>
+    <rect x="189" y="389" width="78" height="9" rx="4.5" fill="#fff" opacity=".92"/>
+
+    <g transform="translate(304 307)">
+      <g fill="url(#gear)">
+        <rect x="-23" y="-96" width="46" height="192" rx="10"/>
+        <rect x="-96" y="-23" width="192" height="46" rx="10"/>
+        <rect x="-73" y="-73" width="146" height="146" rx="16" transform="rotate(45)"/>
+        <circle r="79"/>
+      </g>
+      <circle r="39" fill="#5221B8"/>
+    </g>
+
+    <g transform="translate(318 344) rotate(-38)">
+      <path d="M-103 7H48l19 19-19 19h-151c-15 0-27-12-27-27s12-27 27-27Z" fill="url(#metal)" stroke="#3D168F" stroke-width="7"/>
+      <circle cx="-103" cy="26" r="11" fill="#4B179F"/>
+      <path d="M53 3c15-21 44-29 67-18L95 11l5 24 24 5 26-25c11 23 3 52-19 67-23 16-54 12-73-8-19-19-23-50-5-71Z" fill="#fff" stroke="#3D168F" stroke-width="7"/>
+      <rect x="-62" y="18" width="77" height="11" rx="5.5" fill="#B9BBC8"/>
+    </g>
+  </g>
+</svg>

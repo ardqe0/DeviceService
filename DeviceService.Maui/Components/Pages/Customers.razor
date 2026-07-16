@@ -1,0 +1,108 @@
+@page "/musteriler"
+
+<PageTitle>Müşteri Yönetimi</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <h1>Müşteri Yönetimi</h1>
+        <p>Servis müşterilerini ekleyin ve kayıtları görüntüleyin.</p>
+    </div>
+</section>
+
+@if (!Session.IsService)
+{
+    <section class="empty-state">Bu sayfayı görüntülemek için servis hesabıyla giriş yapmalısınız.</section>
+}
+else
+{
+    <section class="panel form-panel">
+        <h2>Yeni Müşteri</h2>
+        <div class="form-grid four">
+            <div><label>Ad</label><input @bind="customer.FirstName" /></div>
+            <div><label>Soyad</label><input @bind="customer.LastName" /></div>
+            <div><label>Telefon</label><input type="tel" @bind="customer.PhoneNumber" /></div>
+            <div><label>E-posta</label><input type="email" @bind="customer.Email" /></div>
+        </div>
+        <button type="button" class="button primary" @onclick="AddCustomer">Müşteri Ekle</button>
+        @if (!string.IsNullOrEmpty(message))
+        {
+            <p class="message @(success ? "success" : "error")">@message</p>
+        }
+    </section>
+
+    <section class="list-section">
+        <div class="section-title">
+            <h2>Müşteri Listesi</h2>
+            <span>@customers.Count kayıt</span>
+        </div>
+        @if (loading)
+        {
+            <div class="loading">Yükleniyor...</div>
+        }
+        else if (customers.Count == 0)
+        {
+            <div class="empty-state">Henüz müşteri kaydı bulunmuyor.</div>
+        }
+        else
+        {
+            <div class="card-grid">
+                @foreach (var item in customers)
+                {
+                    <article class="record-card">
+                        <h3>@item.FirstName @item.LastName</h3>
+                        <p>@item.PhoneNumber</p>
+                        <p>@(item.Email ?? "E-posta belirtilmedi")</p>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private AuthSession Session => AuthSession.Current;
+    private List<Customer> customers = new();
+    private Customer customer = new();
+    private bool loading = true;
+    private bool success;
+    private string message = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Session.IsService)
+        {
+            await Load();
+        }
+        else
+        {
+            loading = false;
+        }
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        customers = (await Api.GetCustomersAsync()).OrderByDescending(x => x.Id).ToList();
+        loading = false;
+    }
+
+    private async Task AddCustomer()
+    {
+        if (string.IsNullOrWhiteSpace(customer.FirstName) || string.IsNullOrWhiteSpace(customer.LastName) || string.IsNullOrWhiteSpace(customer.PhoneNumber))
+        {
+            success = false;
+            message = "Ad, soyad ve telefon zorunludur.";
+            return;
+        }
+
+        var result = await Api.CreateCustomerAsync(customer);
+        success = result is not null;
+        message = success ? "Müşteri eklendi." : "Müşteri eklenemedi.";
+
+        if (success)
+        {
+            customer = new();
+            await Load();
+        }
+    }
+}

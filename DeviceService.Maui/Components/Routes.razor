@@ -1,0 +1,23 @@
+@if (!sessionRestored)
+{
+    <div class="boot-loading">Oturum yükleniyor...</div>
+}
+else
+{
+    <Router AppAssembly="typeof(global::DeviceService.Shared.AuthSession).Assembly" NotFoundPage="typeof(global::DeviceService.Shared.Components.Pages.NotFound)">
+        <Found Context="routeData">
+            <RouteView RouteData="routeData" DefaultLayout="typeof(global::DeviceService.Shared.Components.Layout.MainLayout)" />
+            <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        </Found>
+    </Router>
+}
+
+@code {
+    private bool sessionRestored;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AuthSession.Current.RestoreAsync();
+        sessionRestored = true;
+    }
+}

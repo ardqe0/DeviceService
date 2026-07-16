@@ -1,0 +1,68 @@
+@page "/musteri-paneli"
+
+<PageTitle>Hesabım</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <h1>Hesabım</h1>
+        <p>Hesap bilgilerinizi görüntüleyin ve oturumunuzu yönetin.</p>
+    </div>
+</section>
+
+@if (!CurrentSession.IsCustomer)
+{
+    <section class="empty-state">Bu sayfayı görüntülemek için müşteri hesabıyla giriş yapmalısınız.</section>
+}
+else if (loading)
+{
+    <div class="loading">Hesap bilgileri yükleniyor...</div>
+}
+else if (dashboard is null)
+{
+    <section class="empty-state">Hesap bilgileri yüklenemedi.</section>
+}
+else
+{
+    <section class="welcome-panel">
+        <div>
+            <span class="eyebrow">Oturum açık</span>
+            <h2>Hoş geldiniz, @CurrentSession.User!.FullName</h2>
+        </div>
+        <div class="welcome-actions">
+            <button class="button primary" @onclick="GoHome">Ana Sayfaya Git</button>
+            <button class="button secondary" @onclick="Logout">Çıkış Yap</button>
+        </div>
+    </section>
+
+    <section class="profile-band">
+        <div>
+            <span class="eyebrow">Müşteri</span>
+            <h2>@dashboard.FullName</h2>
+        </div>
+        <div class="profile-detail"><span>E-posta</span><strong>@dashboard.Email</strong></div>
+        <div class="profile-detail"><span>Telefon</span><strong>@dashboard.PhoneNumber</strong></div>
+    </section>
+}
+
+@code {
+    private AuthSession CurrentSession => AuthSession.Current;
+    private global::DeviceService.Services.CustomerDashboard? dashboard;
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (CurrentSession.IsCustomer)
+            dashboard = await Api.GetCustomerDashboardAsync();
+
+        loading = false;
+    }
+
+    private void GoHome() => Navigation.NavigateTo("/");
+
+    private void Logout()
+    {
+        Api.SetAccessToken(null);
+        CurrentSession.End();
+        Navigation.NavigateTo("/");
+    }
+}

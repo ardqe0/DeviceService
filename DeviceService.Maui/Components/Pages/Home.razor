@@ -1,0 +1,154 @@
+@page "/"
+@using DeviceService.Shared.Components.Pages
+@implements IDisposable
+
+<PageTitle>Ana Sayfa</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <h1>Servis Takip Sistemi</h1>
+        <p>Cihaz servis süreçlerini tek yerden yönetin ve takip edin.</p>
+    </div>
+</section>
+
+@if (Session.IsAuthenticated)
+{
+    @if (Session.IsCustomer)
+    {
+        <CustomerTicketsPanel />
+    }
+    else
+    {
+        <section class="welcome-panel">
+            <div>
+                <span class="eyebrow">Oturum açık</span>
+                <h2>Hoş geldiniz, @Session.User!.FullName</h2>
+            </div>
+            <div class="welcome-actions">
+                <button class="button primary" @onclick="GoToPanel">Servis Fişlerine Git</button>
+                <button class="button secondary" @onclick="Logout">Çıkış Yap</button>
+            </div>
+        </section>
+    }
+}
+else
+{
+    <div class="auth-grid">
+        <section class="panel">
+            <h2>Giriş Yap</h2>
+            <label>E-posta</label>
+            <input type="email" @bind="loginEmail" placeholder="ornek@email.com" autocomplete="username" />
+            <label>Şifre</label>
+            <input type="password" @bind="loginPassword" autocomplete="current-password" />
+            <label class="remember-row">
+                <input type="checkbox" @bind="rememberMe" />
+                <span>Beni hatırla</span>
+            </label>
+            <button type="button" class="button primary full" disabled="@busy" @onclick="Login">Giriş Yap</button>
+            @if (!string.IsNullOrWhiteSpace(loginMessage))
+            {
+                <p class="message error">@loginMessage</p>
+            }
+        </section>
+
+        <section class="panel">
+            <h2>Hesap Oluştur</h2>
+            <div class="form-grid">
+                <div><label>Ad soyad</label><input @bind="register.FullName" autocomplete="name" /></div>
+                <div><label>Telefon</label><input type="tel" @bind="register.PhoneNumber" autocomplete="tel" /></div>
+                <div><label>E-posta</label><input type="email" @bind="register.Email" autocomplete="email" /></div>
+                <div><label>Şifre</label><input type="password" @bind="register.Password" placeholder="En az 8 karakter" autocomplete="new-password" /></div>
+            </div>
+            <label class="switch-row">
+                <input type="checkbox" @bind="register.IsService" />
+                <span>Servis hesabı oluştur</span>
+            </label>
+            @if (register.IsService)
+            {
+                <div class="form-grid business-fields">
+                    <div><label>İşyeri unvanı</label><input @bind="register.BusinessName" /></div>
+                    <div><label>Vergi kimlik numarası</label><input @bind="register.TaxNumber" /></div>
+                    <div><label>Yetkili kişi</label><input @bind="register.ContactName" /></div>
+                    <div><label>Servis kayıt kodu</label><input type="password" @bind="register.ServiceRegistrationCode" autocomplete="off" /></div>
+                    <div class="span-2"><label>İşyeri adresi</label><textarea @bind="register.BusinessAddress"></textarea></div>
+                </div>
+            }
+            <button type="button" class="button teal full" disabled="@busy" @onclick="Register">Hesap Oluştur</button>
+            @if (!string.IsNullOrWhiteSpace(registerMessage))
+            {
+                <p class="message error">@registerMessage</p>
+            }
+        </section>
+    </div>
+}
+
+@code {
+    private AuthSession Session => AuthSession.Current;
+    private string loginEmail = string.Empty;
+    private string loginPassword = string.Empty;
+    private string loginMessage = string.Empty;
+    private string registerMessage = string.Empty;
+    private bool rememberMe;
+    private bool busy;
+    private RegisterAccountRequest register = new();
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnSessionChanged;
+    }
+
+    private void OnSessionChanged(object? sender, EventArgs e)
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task Login()
+    {
+        busy = true;
+        loginMessage = string.Empty;
+        var response = await Api.LoginAsync(loginEmail.Trim(), loginPassword);
+        busy = false;
+
+        if (response is null)
+        {
+            loginMessage = Api.LastErrorMessage;
+            return;
+        }
+
+        Api.SetAccessToken(response.Token);
+        await Session.StartAsync(response, rememberMe);
+        GoToPanel();
+    }
+
+    private async Task Register()
+    {
+        busy = true;
+        registerMessage = string.Empty;
+        var response = await Api.RegisterAsync(register);
+        busy = false;
+
+        if (response is null)
+        {
+            registerMessage = Api.LastErrorMessage;
+            return;
+        }
+
+        Api.SetAccessToken(response.Token);
+        await Session.StartAsync(response, false);
+        GoToPanel();
+    }
+
+    private void GoToPanel() => Navigation.NavigateTo(Session.IsService ? "/servis-fisleri" : "/");
+
+    private void Logout()
+    {
+        Api.SetAccessToken(null);
+        Session.End();
+        Navigation.NavigateTo("/");
+    }
+
+    public void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
+    }
+}

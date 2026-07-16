@@ -1,0 +1,53 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+
+<div class="app-shell @(darkMode ? "dark" : "")">
+    <header class="topbar">
+        <a class="brand" href="/">DeviceService</a>
+        <nav class="nav-links">
+            <NavLink href="/" Match="NavLinkMatch.All">Ana Sayfa</NavLink>
+            @if (Session.IsService)
+            {
+                <NavLink href="/musteriler">Müşteriler</NavLink>
+                <NavLink href="/servis-fisleri">Servis Fişleri</NavLink>
+            }
+            @if (Session.IsCustomer)
+            {
+                <NavLink href="/musteri-paneli">Hesabım</NavLink>
+            }
+        </nav>
+        <div class="top-actions">
+        </div>
+    </header>
+    <main class="page-content">@Body</main>
+    <nav class="mobile-bottom-nav" aria-label="Mobil menu">
+        <NavLink href="/" Match="NavLinkMatch.All"><span class="mobile-nav-icon" aria-hidden="true">⌂</span><span>Ana Sayfa</span></NavLink>
+        @if (Session.IsCustomer)
+        {
+            <NavLink href="/musteri-paneli"><span class="mobile-nav-icon" aria-hidden="true">♙</span><span>Hesabım</span></NavLink>
+        }
+        @if (Session.IsService)
+        {
+            <NavLink href="/musteriler"><span class="mobile-nav-icon" aria-hidden="true">♙</span><span>Müşteriler</span></NavLink>
+            <NavLink href="/servis-fisleri"><span class="mobile-nav-icon" aria-hidden="true">▣</span><span>Servis Fişleri</span></NavLink>
+        }
+    </nav>
+    <button type="button"
+            class="floating-theme-toggle @(darkMode ? "active" : "")"
+            title="@(darkMode ? "Açık temaya geç" : "Koyu temaya geç")"
+            aria-label="@(darkMode ? "Açık temaya geç" : "Koyu temaya geç")"
+            @onclick="ToggleTheme">
+        <span aria-hidden="true">@(darkMode ? "☀" : "☾")</span>
+    </button>
+</div>
+
+@code {
+    private AuthSession Session => AuthSession.Current;
+    private bool darkMode;
+
+    protected override void OnInitialized() => Session.Changed += OnSessionChanged;
+    private void OnSessionChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+    private void ToggleTheme() => darkMode = !darkMode;
+    private void Logout() { Api.SetAccessToken(null); Session.End(); Navigation.NavigateTo("/"); }
+    public void Dispose() => Session.Changed -= OnSessionChanged;
+}

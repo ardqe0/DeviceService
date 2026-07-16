@@ -1,0 +1,177 @@
+@page "/takip/{Token?}"
+@* Takip paneli geçici olarak devre dışıdır. *@
+
+<PageTitle>Cihaz Takibi</PageTitle>
+
+<section class="page-heading">
+    <div>
+        <h1>Cihaz Takibi</h1>
+        <p>Servis fi&#351;inizin g&#252;ncel durumunu takip koduyla sorgulay&#305;n.</p>
+    </div>
+</section>
+
+<section class="search-row panel">
+    <input @bind="searchToken" placeholder="Takip kodunu veya takip linkini girin" />
+    <button type="button" class="button primary" disabled="@loading" @onclick="Search">Ara</button>
+</section>
+
+@if (!string.IsNullOrWhiteSpace(error))
+{
+    <p class="message error">@error</p>
+}
+
+@if (result is not null)
+{
+    <section class="tracking-result">
+        <div class="device-summary">
+            <div>
+                <span class="eyebrow">G&#252;ncel durum</span>
+                <h2>@result.CurrentStatus</h2>
+            </div>
+            <dl>
+                <div><dt>Marka</dt><dd>@result.DeviceInfo.Brand</dd></div>
+                <div><dt>Model</dt><dd>@result.DeviceInfo.Model</dd></div>
+                <div><dt>Seri No</dt><dd>@(result.DeviceInfo.SerialNumber ?? "-")</dd></div>
+                <div><dt>Tahmini &#252;cret</dt><dd>@(result.EstimatedPrice?.ToString("C2") ?? "Belirtilmedi")</dd></div>
+            </dl>
+        </div>
+        <div class="timeline">
+            <h2>Durum Ge&#231;mi&#351;i</h2>
+            @foreach (var item in result.StatusHistory.OrderByDescending(x => x.ChangedAt))
+            {
+                <div class="timeline-item">
+                    <span class="timeline-dot"></span>
+                    <div>
+                        <strong>@item.Status</strong>
+                        <time>@item.ChangedAt.ToString("dd.MM.yyyy HH:mm")</time>
+                        @if (!string.IsNullOrWhiteSpace(item.Notes))
+                        {
+                            <p>@item.Notes</p>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </section>
+}
+
+@if (showPhoneVerification && challenge is not null)
+{
+    <div class="modal-backdrop" role="presentation">
+        <section class="modal" role="dialog" aria-modal="true" aria-labelledby="phone-verification-title">
+            <div class="modal-header">
+                <div>
+                    <p class="eyebrow">Telefon do&#287;rulamas&#305;</p>
+                    <h2 id="phone-verification-title">Takip bilgilerini g&#246;r&#252;nt&#252;le</h2>
+                </div>
+                <button type="button" class="icon-button" aria-label="Kapat" @onclick="CloseVerification">&#215;</button>
+            </div>
+
+            <p>Kay&#305;tl&#305; telefon: <strong>@challenge.MaskedPhoneNumber</strong></p>
+            <label for="phone-last-four">Telefon numaras&#305;n&#305;n son 4 hanesi</label>
+            <input id="phone-last-four" inputmode="numeric" maxlength="4" @bind="phoneLastFour" @bind:event="oninput" placeholder="&#214;rnek: 1234" />
+            <p class="help-text">G&#252;venli&#287;iniz i&#231;in numaran&#305;n tamam&#305; g&#246;sterilmez.</p>
+
+            @if (!string.IsNullOrWhiteSpace(verificationError))
+            {
+                <p class="message error">@verificationError</p>
+            }
+
+            <div class="modal-actions">
+                <button type="button" class="button outline" @onclick="CloseVerification">Vazge&#231;</button>
+                <button type="button" class="button primary" disabled="@verifying" @onclick="VerifyPhone">Do&#287;rula</button>
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    [Parameter] public string? Token { get; set; }
+
+    private string searchToken = string.Empty;
+    private string error = string.Empty;
+    private string verificationError = string.Empty;
+    private string phoneLastFour = string.Empty;
+    private string activeToken = string.Empty;
+    private TrackingInfoResult? result;
+    private TrackingChallengeResult? challenge;
+    private bool loading;
+    private bool verifying;
+    private bool showPhoneVerification;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(Token))
+        {
+            searchToken = Token;
+            await Search();
+        }
+    }
+
+    private async Task Search()
+    {
+        if (string.IsNullOrWhiteSpace(searchToken))
+        {
+            error = "Takip kodu girmelisiniz.";
+            return;
+        }
+
+        loading = true;
+        error = string.Empty;
+        result = null;
+        verificationError = string.Empty;
+        phoneLastFour = string.Empty;
+        activeToken = ExtractToken(searchToken);
+        challenge = await Api.StartTrackingVerificationAsync(activeToken);
+        loading = false;
+
+        if (challenge is null)
+        {
+            error = string.IsNullOrWhiteSpace(Api.LastErrorMessage) ? "Takip kaydı bulunamadı." : Api.LastErrorMessage;
+            return;
+        }
+
+        showPhoneVerification = true;
+    }
+
+    private async Task VerifyPhone()
+    {
+        verificationError = string.Empty;
+        verifying = true;
+        var normalizedLastFour = new string(phoneLastFour.Where(char.IsDigit).ToArray());
+        result = await Api.VerifyTrackingPhoneAsync(new TrackingPhoneVerificationRequest
+        {
+            Token = activeToken,
+            PhoneLastFour = normalizedLastFour
+        });
+        verifying = false;
+
+        if (result is not null)
+        {
+            showPhoneVerification = false;
+            challenge = null;
+            return;
+        }
+
+        verificationError = string.IsNullOrWhiteSpace(Api.LastErrorMessage)
+            ? "Telefon doğrulaması yapılamadı."
+            : Api.LastErrorMessage;
+    }
+
+    private void CloseVerification()
+    {
+        showPhoneVerification = false;
+        challenge = null;
+        verificationError = string.Empty;
+    }
+
+    private static string ExtractToken(string value)
+    {
+        if (!Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri))
+        {
+            return value.Trim().Trim('/');
+        }
+
+        return uri.Segments.Last().Trim('/');
+    }
+}

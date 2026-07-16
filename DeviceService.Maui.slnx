@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="DeviceService.API/DeviceService.API.csproj" />
+  <Project Path="DeviceService.Core/DeviceService.Core.csproj" />
+  <Project Path="DeviceService.Data/DeviceService.Data.csproj" />
+  <Project Path="DeviceService.Maui/DeviceService.Maui.csproj" />
+  <Project Path="DeviceService.Shared/DeviceService.Shared.csproj" />
+  <Project Path="DeviceService.Services/DeviceService.Services.csproj" />
+  <Project Path="DeviceService.Web/DeviceService.Web.csproj" />
+</Solution>
