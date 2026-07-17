@@ -1,4 +1,4 @@
-namespace DeviceService.Core.Entities;
+﻿namespace DeviceService.Core.Entities;
 
 public class UserAccount
 {
@@ -13,5 +13,9 @@ public class UserAccount
     public string? TaxNumber { get; set; }
     public string? BusinessAddress { get; set; }
     public string? ContactName { get; set; }
+    public int SessionVersion { get; set; } = 1;
+    public DateTime? LastLoginAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public ICollection<UserLoginDevice> LoginDevices { get; set; } = new List<UserLoginDevice>();
+    public ICollection<PasswordResetToken> PasswordResetTokens { get; set; } = new List<PasswordResetToken>();
 }

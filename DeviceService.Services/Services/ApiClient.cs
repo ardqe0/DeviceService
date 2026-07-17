@@ -1,4 +1,4 @@
-using DeviceService.Core.Entities;
+﻿using DeviceService.Core.Entities;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Net.Http.Headers;
@@ -136,6 +136,9 @@ public class TrackingHistoryResult
 public class AuthResponse { public string Token { get; set; } = string.Empty; public AuthUser User { get; set; } = new(); }
 public class AuthUser { public int Id { get; set; } public string FullName { get; set; } = string.Empty; public string Email { get; set; } = string.Empty; public string Role { get; set; } = string.Empty; public int? CustomerId { get; set; } }
 public class RegisterAccountRequest { public string FullName { get; set; } = string.Empty; public string Email { get; set; } = string.Empty; public string PhoneNumber { get; set; } = string.Empty; public string Password { get; set; } = string.Empty; public bool IsService { get; set; } public string? BusinessName { get; set; } public string? TaxNumber { get; set; } public string? BusinessAddress { get; set; } public string? ContactName { get; set; } public string? ServiceRegistrationCode { get; set; } }
+public class ForgotPasswordRequest { public string Email { get; set; } = string.Empty; }
+public class ResetPasswordRequest { public string Token { get; set; } = string.Empty; public string NewPassword { get; set; } = string.Empty; }
+public class ChangePasswordRequest { public string CurrentPassword { get; set; } = string.Empty; public string NewPassword { get; set; } = string.Empty; }
 public class CustomerDashboard { public string FullName { get; set; } = string.Empty; public string Email { get; set; } = string.Empty; public string PhoneNumber { get; set; } = string.Empty; public List<CustomerDashboardTicket> Tickets { get; set; } = new(); }
 public class CustomerDashboardTicket { public int Id { get; set; } public string TicketNumber { get; set; } = string.Empty; public string DeviceName { get; set; } = string.Empty; public string Brand { get; set; } = string.Empty; public string? SerialNumber { get; set; } public DateTime CreatedDate { get; set; } public string Status { get; set; } = string.Empty; public decimal? EstimatedPrice { get; set; } public string TrackingToken { get; set; } = string.Empty; public List<CustomerDashboardStatusHistory> StatusHistories { get; set; } = new(); }
 public class CustomerDashboardStatusHistory { public string Status { get; set; } = string.Empty; public DateTime ChangedAt { get; set; } public string? Notes { get; set; } }
@@ -165,6 +168,16 @@ public class ApiClient
         ApplyAccessToken();
     }
 
+    public void SetDeviceInfo(string? deviceId, string? deviceName)
+    {
+        _httpClient.DefaultRequestHeaders.Remove("X-Device-Id");
+        _httpClient.DefaultRequestHeaders.Remove("X-Device-Name");
+
+        if (!string.IsNullOrWhiteSpace(deviceId))
+            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("X-Device-Id", deviceId);
+        if (!string.IsNullOrWhiteSpace(deviceName))
+            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("X-Device-Name", deviceName);
+    }
     private void ApplyAccessToken()
     {
         var token = _accessTokenProvider?.AccessToken ?? AccessToken;
@@ -201,6 +214,73 @@ public class ApiClient
         catch (TaskCanceledException) { LastErrorMessage = "API isteği zaman aşımına uğradı."; return null; }
     }
 
+    public async Task<bool> ForgotPasswordAsync(string email)
+    {
+        ApplyAccessToken();
+        LastErrorMessage = string.Empty;
+        try
+        {
+            using var response = await _httpClient.PostAsJsonAsync("api/Auth/forgot-password", new ForgotPasswordRequest { Email = email });
+            if (response.IsSuccessStatusCode)
+                return true;
+
+            LastErrorMessage = await ReadErrorAsync(response, "Şifre sıfırlama isteği gönderilemedi.");
+            return false;
+        }
+        catch (HttpRequestException) { LastErrorMessage = "API sunucusuna ulaşılamıyor."; return false; }
+        catch (TaskCanceledException) { LastErrorMessage = "API isteği zaman aşımına uğradı."; return false; }
+    }
+
+    public async Task<bool> ResetPasswordAsync(string token, string newPassword)
+    {
+        ApplyAccessToken();
+        LastErrorMessage = string.Empty;
+        try
+        {
+            using var response = await _httpClient.PostAsJsonAsync("api/Auth/reset-password", new ResetPasswordRequest { Token = token, NewPassword = newPassword });
+            if (response.IsSuccessStatusCode)
+                return true;
+
+            LastErrorMessage = await ReadErrorAsync(response, "Şifre sıfırlanamadı.");
+            return false;
+        }
+        catch (HttpRequestException) { LastErrorMessage = "API sunucusuna ulaşılamıyor."; return false; }
+        catch (TaskCanceledException) { LastErrorMessage = "API isteği zaman aşımına uğradı."; return false; }
+    }
+
+    public async Task<AuthResponse?> ChangePasswordAsync(string currentPassword, string newPassword)
+    {
+        ApplyAccessToken();
+        LastErrorMessage = string.Empty;
+        try
+        {
+            using var response = await _httpClient.PostAsJsonAsync("api/Auth/change-password", new ChangePasswordRequest { CurrentPassword = currentPassword, NewPassword = newPassword });
+            if (response.IsSuccessStatusCode)
+                return await response.Content.ReadFromJsonAsync<AuthResponse>();
+
+            LastErrorMessage = await ReadErrorAsync(response, "Şifre değiştirilemedi.");
+            return null;
+        }
+        catch (HttpRequestException) { LastErrorMessage = "API sunucusuna ulaşılamıyor."; return null; }
+        catch (TaskCanceledException) { LastErrorMessage = "API isteği zaman aşımına uğradı."; return null; }
+    }
+
+    public async Task<bool> LogoutAllAsync()
+    {
+        ApplyAccessToken();
+        LastErrorMessage = string.Empty;
+        try
+        {
+            using var response = await _httpClient.PostAsync("api/Auth/logout-all", null);
+            if (response.IsSuccessStatusCode)
+                return true;
+
+            LastErrorMessage = await ReadErrorAsync(response, "Tüm oturumlar kapatılamadı.");
+            return false;
+        }
+        catch (HttpRequestException) { LastErrorMessage = "API sunucusuna ulaşılamıyor."; return false; }
+        catch (TaskCanceledException) { LastErrorMessage = "API isteği zaman aşımına uğradı."; return false; }
+    }
     private static async Task<string> ReadErrorAsync(HttpResponseMessage response, string fallback)
     {
         try
@@ -216,9 +296,30 @@ public class ApiClient
     public async Task<CustomerDashboard?> GetCustomerDashboardAsync()
     {
         ApplyAccessToken();
-        try { return await _httpClient.GetFromJsonAsync<CustomerDashboard>("api/Auth/my-tickets"); } catch { return null; }
-    }
+        try
+        {
+            using var response = await _httpClient.GetAsync("api/Auth/my-tickets");
+            if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+            {
+                SetAccessToken(null);
+                LastErrorMessage = "Oturumunuz geçersiz veya süresi dolmuş. Lütfen yeniden giriş yapın.";
+                return null;
+            }
 
+            if (!response.IsSuccessStatusCode)
+            {
+                LastErrorMessage = await ReadErrorAsync(response, "Hesap bilgileri yüklenemedi.");
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<CustomerDashboard>();
+        }
+        catch
+        {
+            LastErrorMessage = "API sunucusuna ulaşılamıyor.";
+            return null;
+        }
+    }
     // Tracking (Public)
     public async Task<TrackingChallengeResult?> StartTrackingVerificationAsync(string token)
     {
@@ -339,14 +440,28 @@ public class ApiClient
         ApplyAccessToken();
         try
         {
-            return await _httpClient.GetFromJsonAsync<List<ServiceTicketListItem>>("api/ServiceTickets") ?? new();
+            using var response = await _httpClient.GetAsync("api/ServiceTickets");
+            if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
+            {
+                SetAccessToken(null);
+                LastErrorMessage = "Oturumunuz geçersiz veya süresi dolmuş. Lütfen yeniden giriş yapın.";
+                return new();
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                LastErrorMessage = await ReadErrorAsync(response, "Servis fişleri yüklenemedi.");
+                return new();
+            }
+
+            return await response.Content.ReadFromJsonAsync<List<ServiceTicketListItem>>() ?? new();
         }
         catch
         {
+            LastErrorMessage = "API sunucusuna ulaşılamıyor.";
             return new();
         }
     }
-
     public async Task<ServiceTicketDetailItem?> GetServiceTicketDetailAsync(int id)
     {
         ApplyAccessToken();

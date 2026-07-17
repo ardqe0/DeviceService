@@ -1,5 +1,9 @@
-@inherits LayoutComponentBase
+﻿@inherits LayoutComponentBase
 @implements IDisposable
+@implements IAsyncDisposable
+@using System.Text
+@using System.Text.Json
+@inject IJSRuntime Js
 
 <div class="app-shell @(darkMode ? "dark" : "")">
     <header class="topbar">
@@ -25,9 +29,17 @@
                 <NavLink href="/musteri-paneli" @onclick="CloseMenu">Hesabım</NavLink>
             }
         </nav>
-        <div class="top-actions">
-        </div>
+        <div class="top-actions"></div>
     </header>
+
+    @if (!string.IsNullOrWhiteSpace(sessionWarning))
+    {
+        <div class="session-warning" role="status">
+            <span>@sessionWarning</span>
+            <button type="button" class="text-button" @onclick="DismissWarning">Tamam</button>
+        </div>
+    }
+
     <main class="page-content">@Body</main>
     <nav class="mobile-bottom-nav" aria-label="Mobil menü">
         <NavLink href="/" Match="NavLinkMatch.All"><span class="mobile-nav-icon" aria-hidden="true">⌂</span><span>Ana Sayfa</span></NavLink>
@@ -51,14 +63,105 @@
 </div>
 
 @code {
+    private const string RememberedSessionKey = "device-service-remembered-session";
     private bool darkMode;
     private bool menuOpen;
+    private string? sessionWarning;
+    private DotNetObjectReference<MainLayout>? monitorReference;
 
     protected override void OnInitialized() => Session.Changed += OnSessionChanged;
-    private void OnSessionChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            monitorReference = DotNetObjectReference.Create(this);
+
+        await ConfigureSessionMonitorAsync();
+    }
+
+    private void OnSessionChanged(object? sender, EventArgs e)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            await ConfigureSessionMonitorAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task ConfigureSessionMonitorAsync()
+    {
+        if (monitorReference is null)
+            return;
+
+        var expiresAt = GetExpiration(Session.Token);
+        if (!Session.IsAuthenticated || expiresAt is null)
+        {
+            sessionWarning = null;
+            await Js.InvokeVoidAsync("deviceServiceSession.stop");
+            return;
+        }
+
+        await Js.InvokeVoidAsync("deviceServiceSession.start", monitorReference, expiresAt.Value.ToUnixTimeSeconds(), 900, 120, 300);
+    }
+
+    [JSInvokable]
+    public Task ShowSessionWarning(string reason, int remainingSeconds)
+    {
+        sessionWarning = reason == "inactivity"
+            ? $"İşlem yapılmadığı için oturumunuz {FormatRemainingTime(remainingSeconds)} içinde kapanacak."
+            : $"Oturumunuz {FormatRemainingTime(remainingSeconds)} içinde sona erecek.";
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task EndSession(string reason) => InvokeAsync(async () =>
+    {
+        await LogoutAsync();
+    });
+
     private void ToggleTheme() => darkMode = !darkMode;
     private void ToggleMenu() => menuOpen = !menuOpen;
     private void CloseMenu() => menuOpen = false;
-    private void Logout() { Api.SetAccessToken(null); Session.End(); Navigation.NavigateTo("/"); }
+    private void DismissWarning() => sessionWarning = null;
+
+    private async Task LogoutAsync()
+    {
+        Api.SetAccessToken(null);
+        Session.End();
+        sessionWarning = null;
+        await Js.InvokeVoidAsync("localStorage.removeItem", RememberedSessionKey);
+        Navigation.NavigateTo("/");
+    }
+
+    private static string FormatRemainingTime(int seconds) => seconds >= 60
+        ? $"{Math.Max(1, (int)Math.Ceiling(seconds / 60d))} dakika"
+        : $"{Math.Max(1, seconds)} saniye";
+
+    private static DateTimeOffset? GetExpiration(string? token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            return null;
+
+        try
+        {
+            var payload = token.Split('.')[1].Replace('-', '+').Replace('_', '/');
+            payload = payload.PadRight(payload.Length + ((4 - payload.Length % 4) % 4), '=');
+            using var document = JsonDocument.Parse(Encoding.UTF8.GetString(Convert.FromBase64String(payload)));
+            return document.RootElement.TryGetProperty("exp", out var expiry)
+                ? DateTimeOffset.FromUnixTimeSeconds(expiry.GetInt64())
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public void Dispose() => Session.Changed -= OnSessionChanged;
+
+    public ValueTask DisposeAsync()
+    {
+        monitorReference?.Dispose();
+        return ValueTask.CompletedTask;
+    }
 }

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Razor">
+﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
     <TargetFrameworks>net10.0-android</TargetFrameworks>
     <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('linux'))">$(TargetFrameworks);net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
@@ -10,7 +10,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <EnableDefaultCssItems>false</EnableDefaultCssItems>
-    <MauiXamlInflator>SourceGen</MauiXamlInflator>
     <DeviceServiceApiBaseUrl Condition="'$(DeviceServiceApiBaseUrl)' == ''">http://localhost:5113/</DeviceServiceApiBaseUrl>
     <ApplicationTitle>Cihaz Servisi</ApplicationTitle>
     <ApplicationId>com.deneme.deviceservice.maui</ApplicationId>

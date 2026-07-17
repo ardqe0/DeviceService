@@ -1,5 +1,8 @@
-@page "/"
+﻿@page "/"
 @implements IDisposable
+@using System.Text
+@using System.Text.Json
+@inject IJSRuntime Js
 
 <PageTitle>Ana Sayfa</PageTitle>
 
@@ -25,6 +28,7 @@
             </div>
             <div class="welcome-actions">
                 <button class="button primary" @onclick="GoToPanel">Servis Fişlerine Git</button>
+                <button class="button secondary" @onclick="OpenSecurity">Hesap Güvenliği</button>
                 <button class="button secondary" @onclick="Logout">Çıkış Yap</button>
             </div>
         </section>
@@ -39,7 +43,12 @@ else
             <input type="email" @bind="loginEmail" placeholder="ornek@email.com" autocomplete="username" />
             <label>Şifre</label>
             <input type="password" @bind="loginPassword" autocomplete="current-password" />
+            <label class="remember-row">
+                <input type="checkbox" @bind="rememberMe" />
+                <span>Beni hatırla</span>
+            </label>
             <button type="button" class="button primary full" disabled="@busy" @onclick="Login">Giriş Yap</button>
+            <button type="button" class="text-button" @onclick="GoToForgotPassword">Şifremi unuttum</button>
             @if (!string.IsNullOrWhiteSpace(loginMessage))
             {
                 <p class="message error">@loginMessage</p>
@@ -77,12 +86,21 @@ else
     </div>
 }
 
+@if (securityOpen)
+{
+    <AccountSecurityModal OnClose="CloseSecurity" />
+}
+
 @code {
+    private const string RememberedSessionKey = "device-service-remembered-session";
     private string loginEmail = string.Empty;
     private string loginPassword = string.Empty;
     private string loginMessage = string.Empty;
     private string registerMessage = string.Empty;
+    private bool rememberMe;
     private bool busy;
+    private bool securityOpen;
+    private bool deviceConfigured;
     private RegisterAccountRequest register = new();
 
     protected override void OnInitialized()
@@ -95,6 +113,37 @@ else
         _ = InvokeAsync(StateHasChanged);
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await ConfigureDeviceAsync();
+        if (Session.IsAuthenticated)
+            return;
+
+        try
+        {
+            var storedSession = await Js.InvokeAsync<string?>("localStorage.getItem", RememberedSessionKey);
+            var response = string.IsNullOrWhiteSpace(storedSession)
+                ? null
+                : JsonSerializer.Deserialize<AuthResponse>(storedSession);
+
+            if (response is null || string.IsNullOrWhiteSpace(response.Token) || IsExpired(response.Token))
+            {
+                await Js.InvokeVoidAsync("localStorage.removeItem", RememberedSessionKey);
+                return;
+            }
+
+            Api.SetAccessToken(response.Token);
+            Session.Start(response);
+            GoToPanel();
+        }
+        catch (JSException)
+        {
+            // Yerel depolama kullanılamıyorsa geçici oturumla devam edilir.
+        }
+    }
     private async Task Login()
     {
         busy = true;
@@ -110,6 +159,7 @@ else
 
         Api.SetAccessToken(response.Token);
         Session.Start(response);
+        await UpdateRememberedSessionAsync(response, rememberMe);
         GoToPanel();
     }
 
@@ -128,18 +178,67 @@ else
 
         Api.SetAccessToken(response.Token);
         Session.Start(response);
+        await UpdateRememberedSessionAsync(response, false);
         GoToPanel();
     }
 
-    private void GoToPanel() => Navigation.NavigateTo(Session.IsService ? "/servis-fisleri" : "/");
+    private async Task ConfigureDeviceAsync()
+    {
+        if (deviceConfigured)
+            return;
 
-    private void Logout()
+        try
+        {
+            var device = await Js.InvokeAsync<ClientDevice>("deviceServiceSession.getOrCreateDevice");
+            Api.SetDeviceInfo(device.Id, device.Name);
+            deviceConfigured = true;
+        }
+        catch (JSException)
+        {
+            // Cihaz bilgisi alınamıyorsa API güvenli sunucu tarafı parmak iziyle devam eder.
+        }
+    }
+
+    private void GoToForgotPassword() => Navigation.NavigateTo("/sifremi-unuttum");
+
+    private sealed class ClientDevice
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+    }
+    private void GoToPanel() => Navigation.NavigateTo(Session.IsService ? "/servis-fisleri" : "/");
+    private void OpenSecurity() => securityOpen = true;
+    private void CloseSecurity() => securityOpen = false;
+
+    private async Task Logout()
     {
         Api.SetAccessToken(null);
         Session.End();
+        await Js.InvokeVoidAsync("localStorage.removeItem", RememberedSessionKey);
         Navigation.NavigateTo("/");
     }
 
+    private Task UpdateRememberedSessionAsync(AuthResponse response, bool shouldRemember) => shouldRemember
+        ? Js.InvokeVoidAsync("localStorage.setItem", RememberedSessionKey, JsonSerializer.Serialize(response)).AsTask()
+        : Js.InvokeVoidAsync("localStorage.removeItem", RememberedSessionKey).AsTask();
+
+    private static bool IsExpired(string token)
+    {
+        try
+        {
+            var payload = token.Split('.')[1].Replace('-', '+').Replace('_', '/');
+            payload = payload.PadRight(payload.Length + ((4 - payload.Length % 4) % 4), '=');
+            using var document = JsonDocument.Parse(Encoding.UTF8.GetString(Convert.FromBase64String(payload)));
+            return !document.RootElement.TryGetProperty("sv", out var sessionVersion)
+                || string.IsNullOrWhiteSpace(sessionVersion.GetString())
+                || !document.RootElement.TryGetProperty("exp", out var expiry)
+                || DateTimeOffset.FromUnixTimeSeconds(expiry.GetInt64()) <= DateTimeOffset.UtcNow;
+        }
+        catch
+        {
+            return true;
+        }
+    }
     public void Dispose()
     {
         Session.Changed -= OnSessionChanged;

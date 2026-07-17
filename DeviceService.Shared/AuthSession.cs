@@ -1,4 +1,4 @@
-using DeviceService.Services;
+﻿using DeviceService.Services;
 
 namespace DeviceService.Shared;
 
@@ -31,5 +31,11 @@ public sealed class AuthSession : IAccessTokenStore
     {
         Token = token;
         ApiClient.AccessToken = token;
+
+        if (string.IsNullOrWhiteSpace(token) && User is not null)
+        {
+            User = null;
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
     }
 }

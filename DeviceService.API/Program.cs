@@ -1,4 +1,7 @@
-using System.Text;
+﻿using System.Text;
+using System.Security.Claims;
+using DeviceService.Data;
+using Microsoft.EntityFrameworkCore;
 using System.Threading.RateLimiting;
 using DeviceService.API.Extensions;
 using DeviceService.API.Services;
@@ -112,7 +115,28 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = builder.Configuration["Jwt:Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
-    });
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var userIdText = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var sessionVersionText = context.Principal?.FindFirst("sv")?.Value;
+                if (!int.TryParse(userIdText, out var userId) || !int.TryParse(sessionVersionText, out var sessionVersion))
+                {
+                    context.Fail("Oturum geçersiz.");
+                    return;
+                }
+
+                var db = context.HttpContext.RequestServices.GetRequiredService<DeviceServiceDbContext>();
+                var account = await db.UserAccounts.AsNoTracking()
+                    .Where(account => account.Id == userId)
+                    .Select(account => new { account.SessionVersion })
+                    .FirstOrDefaultAsync();
+
+                if (account is null || account.SessionVersion != sessionVersion)
+                    context.Fail("Oturum geçersiz.");
+            }
+        };    });
 
 builder.Services.AddAuthorization(options =>
 {
