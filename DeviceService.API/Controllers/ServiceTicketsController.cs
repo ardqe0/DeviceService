@@ -193,10 +193,12 @@ public class ServiceTicketsController : ControllerBase
 
         if ((ServiceTicketStatus)request.Status == ServiceTicketStatus.TeslimEdildi &&
             (string.IsNullOrWhiteSpace(existingTicket.DeliveryDevicePhotoPath) ||
+             string.IsNullOrWhiteSpace(existingTicket.DeliveryDeviceBackPhotoPath) ||
              string.IsNullOrWhiteSpace(existingTicket.DeliveryIdentityDocumentPhotoPath) ||
+             string.IsNullOrWhiteSpace(existingTicket.DeliveryIdentityDocumentBackPhotoPath) ||
              string.IsNullOrWhiteSpace(existingTicket.DeliveryRecipientFullName)))
         {
-            return BadRequest(new { message = "Teslim işlemi için teslim alan kişi, cihaz fotoğrafı ve kimlik belgesi fotoğrafı zorunludur." });
+            return BadRequest(new { message = "Teslim işlemi için teslim alan kişi, cihaz fotoğrafı ve kimlik belgesinin ön ve arka yüz fotoğrafları zorunludur." });
         }
 
         try
@@ -250,7 +252,7 @@ public class ServiceTicketsController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.RecipientFullName))
             return BadRequest(new { message = "Teslim alan kişinin adı soyadı zorunludur." });
 
-        var validationError = await ValidateDeliveryImagesAsync(request.DevicePhoto, request.IdentityDocumentPhoto, cancellationToken);
+        var validationError = await ValidateDeliveryImagesAsync(request.DeviceFrontPhoto, request.DeviceBackPhoto, request.IdentityDocumentFrontPhoto, request.IdentityDocumentBackPhoto, cancellationToken);
         if (validationError is not null)
             return BadRequest(new { message = validationError });
 
@@ -259,15 +261,21 @@ public class ServiceTicketsController : ControllerBase
             return NotFound();
 
         string? devicePhotoPath = null;
+        string? deviceBackPhotoPath = null;
         string? identityDocumentPhotoPath = null;
+        string? identityDocumentBackPhotoPath = null;
         try
         {
-            devicePhotoPath = await SaveDeliveryImageAsync(request.DevicePhoto!, "cihaz", cancellationToken);
-            identityDocumentPhotoPath = await SaveDeliveryImageAsync(request.IdentityDocumentPhoto!, "kimlik", cancellationToken);
+            devicePhotoPath = await SaveDeliveryImageAsync(request.DeviceFrontPhoto!, "cihaz-on", cancellationToken);
+            deviceBackPhotoPath = await SaveDeliveryImageAsync(request.DeviceBackPhoto!, "cihaz-arka", cancellationToken);
+            identityDocumentPhotoPath = await SaveDeliveryImageAsync(request.IdentityDocumentFrontPhoto!, "kimlik-on", cancellationToken);
+            identityDocumentBackPhotoPath = await SaveDeliveryImageAsync(request.IdentityDocumentBackPhoto!, "kimlik-arka", cancellationToken);
 
             ticket.DeliveryRecipientFullName = request.RecipientFullName.Trim();
             ticket.DeliveryDevicePhotoPath = devicePhotoPath;
+            ticket.DeliveryDeviceBackPhotoPath = deviceBackPhotoPath;
             ticket.DeliveryIdentityDocumentPhotoPath = identityDocumentPhotoPath;
+            ticket.DeliveryIdentityDocumentBackPhotoPath = identityDocumentBackPhotoPath;
             ticket.DeliveredAt = DateTime.Now;
 
             var updatedTicket = await _ticketService.UpdateTicketDetailsAsync(
@@ -283,7 +291,9 @@ public class ServiceTicketsController : ControllerBase
         catch (Exception ex)
         {
             DeleteEvidenceFile(devicePhotoPath);
+            DeleteEvidenceFile(deviceBackPhotoPath);
             DeleteEvidenceFile(identityDocumentPhotoPath);
+            DeleteEvidenceFile(identityDocumentBackPhotoPath);
             _logger.LogError(ex, "Teslim kanıtları kaydedilemedi. Servis fişi: {TicketNumber}", FormatTicketNumber(id));
             return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Teslim kanıtları kaydedilemedi." });
         }
@@ -301,15 +311,25 @@ public class ServiceTicketsController : ControllerBase
     }
 
     private async Task<string?> ValidateDeliveryImagesAsync(
-        IFormFile? devicePhoto,
-        IFormFile? identityDocumentPhoto,
+        IFormFile? deviceFrontPhoto,
+        IFormFile? deviceBackPhoto,
+        IFormFile? identityDocumentFrontPhoto,
+        IFormFile? identityDocumentBackPhoto,
         CancellationToken cancellationToken)
     {
-        var deviceError = await ValidateImageAsync(devicePhoto, "Cihaz fotoğrafı", cancellationToken);
+        var deviceError = await ValidateImageAsync(deviceFrontPhoto, "Cihaz ön yüz fotoğrafı", cancellationToken);
         if (deviceError is not null)
             return deviceError;
 
-        return await ValidateImageAsync(identityDocumentPhoto, "Kimlik belgesi fotoğrafı", cancellationToken);
+        var deviceBackError = await ValidateImageAsync(deviceBackPhoto, "Cihaz arka yüz fotoğrafı", cancellationToken);
+        if (deviceBackError is not null)
+            return deviceBackError;
+
+        var identityFrontError = await ValidateImageAsync(identityDocumentFrontPhoto, "Kimlik belgesi ön yüz fotoğrafı", cancellationToken);
+        if (identityFrontError is not null)
+            return identityFrontError;
+
+        return await ValidateImageAsync(identityDocumentBackPhoto, "Kimlik belgesi arka yüz fotoğrafı", cancellationToken);
     }
 
     private static async Task<string?> ValidateImageAsync(IFormFile? file, string fieldName, CancellationToken cancellationToken)
@@ -491,7 +511,9 @@ public class ServiceTicketsController : ControllerBase
             DeliveryRecipientFullName = ticket.DeliveryRecipientFullName,
             DeliveredAt = ticket.DeliveredAt,
             HasDeliveryEvidence = !string.IsNullOrWhiteSpace(ticket.DeliveryDevicePhotoPath) &&
-                                  !string.IsNullOrWhiteSpace(ticket.DeliveryIdentityDocumentPhotoPath),
+                                  !string.IsNullOrWhiteSpace(ticket.DeliveryDeviceBackPhotoPath) &&
+                                  !string.IsNullOrWhiteSpace(ticket.DeliveryIdentityDocumentPhotoPath) &&
+                                  !string.IsNullOrWhiteSpace(ticket.DeliveryIdentityDocumentBackPhotoPath),
             StatusHistories = ticket.StatusHistories
                 .OrderBy(history => history.ChangedAt)
                 .Select(history => new StatusHistoryDto

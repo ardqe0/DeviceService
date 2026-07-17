@@ -11,7 +11,9 @@ public class ServiceTicket
     public string? Notes { get; set; }
     public string? DeliveryRecipientFullName { get; set; }
     public string? DeliveryDevicePhotoPath { get; set; }
+    public string? DeliveryDeviceBackPhotoPath { get; set; }
     public string? DeliveryIdentityDocumentPhotoPath { get; set; }
+    public string? DeliveryIdentityDocumentBackPhotoPath { get; set; }
     public DateTime? DeliveredAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime? UpdatedAt { get; set; }

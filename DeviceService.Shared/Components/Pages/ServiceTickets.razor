@@ -154,7 +154,7 @@ else
                         <section class="delivery-evidence-section">
                             <div>
                                 <h3>Teslim kanıtı</h3>
-                                <p class="help-text">Teslim alan kişinin adı, cihaz fotoğrafı ve kimlik belgesi fotoğrafı zorunludur.</p>
+                                <p class="help-text">Teslim alan kişinin adı, cihazın ön/arka fotoğrafları ve kimlik belgesinin ön/arka fotoğrafları zorunludur.</p>
                             </div>
                             @if (detail.HasDeliveryEvidence)
                             {
@@ -174,8 +174,10 @@ else
                             {
                                 <div class="form-grid delivery-evidence-grid">
                                     <div class="span-2"><label>Teslim alan kişi adı soyadı</label><input @bind="deliveryRecipientFullName" /></div>
-                                    <div><label>Cihaz fotoğrafı</label><InputFile OnChange="SetDeliveryDevicePhoto" accept="image/jpeg,image/png,image/webp" /></div>
-                                    <div><label>Kimlik belgesi fotoğrafı</label><InputFile OnChange="SetDeliveryIdentityPhoto" accept="image/jpeg,image/png,image/webp" /></div>
+                                    <div><label>Cihaz ön yüz fotoğrafı</label><InputFile OnChange="SetDeliveryDeviceFrontPhoto" accept="image/jpeg,image/png,image/webp" /></div>
+                                    <div><label>Cihaz arka yüz fotoğrafı</label><InputFile OnChange="SetDeliveryDeviceBackPhoto" accept="image/jpeg,image/png,image/webp" /></div>
+                                    <div><label>Kimlik ön yüz fotoğrafı</label><InputFile OnChange="SetDeliveryIdentityFrontPhoto" accept="image/jpeg,image/png,image/webp" /></div>
+                                    <div><label>Kimlik arka yüz fotoğrafı</label><InputFile OnChange="SetDeliveryIdentityBackPhoto" accept="image/jpeg,image/png,image/webp" /></div>
                                 </div>
                             }
                         </section>
@@ -234,8 +236,10 @@ else
     private string detailNotes = string.Empty;
     private string detailMessage = string.Empty;
     private string deliveryRecipientFullName = string.Empty;
-    private IBrowserFile? deliveryDevicePhoto;
-    private IBrowserFile? deliveryIdentityPhoto;
+    private IBrowserFile? deliveryDeviceFrontPhoto;
+    private IBrowserFile? deliveryDeviceBackPhoto;
+    private IBrowserFile? deliveryIdentityFrontPhoto;
+    private IBrowserFile? deliveryIdentityBackPhoto;
     private string operationMessage = string.Empty;
     private bool operationSuccess;
     private CreateServiceTicketRequest createRequest = new();
@@ -360,8 +364,10 @@ else
         detailPrice = detail.EstimatedPrice?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
         detailNotes = detail.Notes ?? string.Empty;
         deliveryRecipientFullName = detail.DeliveryRecipientFullName ?? string.Empty;
-        deliveryDevicePhoto = null;
-        deliveryIdentityPhoto = null;
+        deliveryDeviceFrontPhoto = null;
+        deliveryDeviceBackPhoto = null;
+        deliveryIdentityFrontPhoto = null;
+        deliveryIdentityBackPhoto = null;
     }
 
     private void CloseDetail()
@@ -417,34 +423,44 @@ else
         return true;
     }
 
-    private void SetDeliveryDevicePhoto(InputFileChangeEventArgs eventArgs) => deliveryDevicePhoto = eventArgs.File;
 
-    private void SetDeliveryIdentityPhoto(InputFileChangeEventArgs eventArgs) => deliveryIdentityPhoto = eventArgs.File;
+    private void SetDeliveryDeviceFrontPhoto(InputFileChangeEventArgs eventArgs) => deliveryDeviceFrontPhoto = eventArgs.File;
+    private void SetDeliveryDeviceBackPhoto(InputFileChangeEventArgs eventArgs) => deliveryDeviceBackPhoto = eventArgs.File;
+    private void SetDeliveryIdentityFrontPhoto(InputFileChangeEventArgs eventArgs) => deliveryIdentityFrontPhoto = eventArgs.File;
+    private void SetDeliveryIdentityBackPhoto(InputFileChangeEventArgs eventArgs) => deliveryIdentityBackPhoto = eventArgs.File;
 
     private async Task SaveDeliveryEvidence(decimal? price)
     {
         if (detail is null)
             return;
 
-        if (string.IsNullOrWhiteSpace(deliveryRecipientFullName) || deliveryDevicePhoto is null || deliveryIdentityPhoto is null)
+        if (string.IsNullOrWhiteSpace(deliveryRecipientFullName) || deliveryDeviceFrontPhoto is null || deliveryDeviceBackPhoto is null || deliveryIdentityFrontPhoto is null || deliveryIdentityBackPhoto is null)
         {
-            detailMessage = "Teslim alan kişi, cihaz fotoğrafı ve kimlik belgesi fotoğrafı zorunludur.";
+            detailMessage = "Teslim alan kişi, cihazın ön/arka fotoğrafları ve kimlik belgesinin ön/arka fotoğrafları zorunludur.";
             return;
         }
 
-        await using var deviceStream = deliveryDevicePhoto.OpenReadStream(5 * 1024 * 1024);
-        await using var identityStream = deliveryIdentityPhoto.OpenReadStream(5 * 1024 * 1024);
+        await using var deviceFrontStream = deliveryDeviceFrontPhoto.OpenReadStream(5 * 1024 * 1024);
+        await using var deviceBackStream = deliveryDeviceBackPhoto.OpenReadStream(5 * 1024 * 1024);
+        await using var identityFrontStream = deliveryIdentityFrontPhoto.OpenReadStream(5 * 1024 * 1024);
+        await using var identityBackStream = deliveryIdentityBackPhoto.OpenReadStream(5 * 1024 * 1024);
         var updated = await Api.UploadDeliveryEvidenceAsync(
             detail.Id,
             deliveryRecipientFullName,
             price,
             detailNotes,
-            deviceStream,
-            deliveryDevicePhoto.Name,
-            deliveryDevicePhoto.ContentType,
-            identityStream,
-            deliveryIdentityPhoto.Name,
-            deliveryIdentityPhoto.ContentType);
+            deviceFrontStream,
+            deliveryDeviceFrontPhoto.Name,
+            deliveryDeviceFrontPhoto.ContentType,
+            deviceBackStream,
+            deliveryDeviceBackPhoto.Name,
+            deliveryDeviceBackPhoto.ContentType,
+            identityFrontStream,
+            deliveryIdentityFrontPhoto.Name,
+            deliveryIdentityFrontPhoto.ContentType,
+            identityBackStream,
+            deliveryIdentityBackPhoto.Name,
+            deliveryIdentityBackPhoto.ContentType);
 
         if (updated is null)
         {

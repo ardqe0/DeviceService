@@ -555,12 +555,18 @@ public class ApiClient
         string recipientFullName,
         decimal? estimatedPrice,
         string? notes,
-        Stream devicePhotoStream,
-        string devicePhotoFileName,
-        string devicePhotoContentType,
-        Stream identityDocumentPhotoStream,
-        string identityDocumentPhotoFileName,
-        string identityDocumentPhotoContentType)
+        Stream deviceFrontPhotoStream,
+        string deviceFrontPhotoFileName,
+        string deviceFrontPhotoContentType,
+        Stream deviceBackPhotoStream,
+        string deviceBackPhotoFileName,
+        string deviceBackPhotoContentType,
+        Stream identityDocumentFrontPhotoStream,
+        string identityDocumentFrontPhotoFileName,
+        string identityDocumentFrontPhotoContentType,
+        Stream identityDocumentBackPhotoStream,
+        string identityDocumentBackPhotoFileName,
+        string identityDocumentBackPhotoContentType)
     {
         ApplyAccessToken();
         LastErrorMessage = string.Empty;
@@ -573,13 +579,10 @@ public class ApiClient
             if (!string.IsNullOrWhiteSpace(notes))
                 content.Add(new StringContent(notes), "notes");
 
-            var devicePhoto = new StreamContent(devicePhotoStream);
-            devicePhoto.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(devicePhotoContentType) ? "application/octet-stream" : devicePhotoContentType);
-            content.Add(devicePhoto, "devicePhoto", devicePhotoFileName);
-
-            var identityDocumentPhoto = new StreamContent(identityDocumentPhotoStream);
-            identityDocumentPhoto.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(identityDocumentPhotoContentType) ? "application/octet-stream" : identityDocumentPhotoContentType);
-            content.Add(identityDocumentPhoto, "identityDocumentPhoto", identityDocumentPhotoFileName);
+            AddPhoto(content, deviceFrontPhotoStream, deviceFrontPhotoFileName, deviceFrontPhotoContentType, "deviceFrontPhoto");
+            AddPhoto(content, deviceBackPhotoStream, deviceBackPhotoFileName, deviceBackPhotoContentType, "deviceBackPhoto");
+            AddPhoto(content, identityDocumentFrontPhotoStream, identityDocumentFrontPhotoFileName, identityDocumentFrontPhotoContentType, "identityDocumentFrontPhoto");
+            AddPhoto(content, identityDocumentBackPhotoStream, identityDocumentBackPhotoFileName, identityDocumentBackPhotoContentType, "identityDocumentBackPhoto");
 
             using var response = await _httpClient.PostAsync($"api/ServiceTickets/{ticketId}/delivery-evidence", content);
             if (!response.IsSuccessStatusCode)
@@ -600,6 +603,13 @@ public class ApiClient
             LastErrorMessage = "Teslim kanıtı isteği zaman aşımına uğradı.";
             return null;
         }
+    }
+
+    private static void AddPhoto(MultipartFormDataContent content, Stream stream, string fileName, string contentType, string fieldName)
+    {
+        var photo = new StreamContent(stream);
+        photo.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType);
+        content.Add(photo, fieldName, fileName);
     }
 
     public async Task<byte[]?> DownloadServiceTicketPdfAsync(int ticketId)

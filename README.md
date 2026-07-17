@@ -9,7 +9,7 @@ Telefon ve elektronik cihaz servisleri için geliştirilmiş bir servis yönetim
 - Müşteri, cihaz ve servis fişi yönetimi
 - Otomatik servis fişi numarası ve güvenli takip kodu oluşturma
 - Durum geçmişi, not ve tahmini ücret takibi
-- Teslimde teslim alan kişi adı, cihaz fotoğrafı ve kimlik belgesi fotoğrafı ile teslim kanıtı
+- Teslimde teslim alan kişi adı, cihaz ve kimlik belgesinin ön/arka fotoğrafları ile teslim kanıtı
 - Yetkili servis için PDF servis fişi indirme
 - Takip doğrulaması için telefon numarasının son dört hanesi
 - Hatalı takip doğrulamasında deneme sınırı ve geçici kilit
@@ -135,7 +135,7 @@ DeviceService.Maui\bin\Release\net10.0-android\publish\
 - Şifre değişimi ve "Tüm Oturumları Kapat" işlemi eski JWT oturumlarını geçersiz kılar.
 - SMTP ayarları yapılandırılmadıysa e-posta gönderimi başarısız olur; servis fişi kaydı korunur.
 - Teslim kanıtı görselleri `DeviceService.API/App_Data/DeliveryEvidence` altında tutulur; uygulama tarafından public olarak yayınlanmaz ve Git tarafından yok sayılır.
-- "Teslim Edildi" durumuna geçmek için teslim alan kişi adı ile iki teslim görseli API tarafında da zorunludur.
+- "Teslim Edildi" durumuna geçmek için teslim alan kişi adı ile cihaz ve kimlik belgesinin ön/arka görselleri API tarafında da zorunludur.
 
 ## Production Deploy
 

@@ -28,8 +28,10 @@ public class DeliveryEvidenceRequestDto
     public string RecipientFullName { get; set; } = string.Empty;
     public decimal? EstimatedPrice { get; set; }
     public string? Notes { get; set; }
-    public IFormFile? DevicePhoto { get; set; }
-    public IFormFile? IdentityDocumentPhoto { get; set; }
+    public IFormFile? DeviceFrontPhoto { get; set; }
+    public IFormFile? DeviceBackPhoto { get; set; }
+    public IFormFile? IdentityDocumentFrontPhoto { get; set; }
+    public IFormFile? IdentityDocumentBackPhoto { get; set; }
 }
 
 public class StatusHistoryDto
