@@ -376,13 +376,28 @@ public class ServiceTicketsController : ControllerBase
             System.IO.File.Delete(absolutePath);
     }
 
-    private static byte[] CreateServiceTicketPdf(ServiceTicket ticket)
+    private byte[]? ReadEvidencePhoto(string? relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+            return null;
+
+        var root = Path.GetFullPath(Path.Combine(_environment.ContentRootPath, "App_Data", "DeliveryEvidence"));
+        var fullPath = Path.GetFullPath(Path.Combine(_environment.ContentRootPath, relativePath));
+        if (!fullPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+            !System.IO.File.Exists(fullPath))
+            return null;
+
+        return System.IO.File.ReadAllBytes(fullPath);
+    }
+    private byte[] CreateServiceTicketPdf(ServiceTicket ticket)
     {
         var customerName = ticket.Device?.Customer is null
             ? "-"
             : $"{ticket.Device.Customer.FirstName} {ticket.Device.Customer.LastName}".Trim();
         var deviceName = $"{ticket.Device?.Brand} {ticket.Device?.Model}".Trim();
         var statusHistory = ticket.StatusHistories.OrderBy(history => history.ChangedAt).ToList();
+        var deviceFrontPhoto = ReadEvidencePhoto(ticket.DeliveryDevicePhotoPath);
+        var deviceBackPhoto = ReadEvidencePhoto(ticket.DeliveryDeviceBackPhotoPath);
 
         return Document.Create(container =>
         {
@@ -420,6 +435,29 @@ public class ServiceTicketsController : ControllerBase
                         AddCell(table, "Teslim zamanı", ticket.DeliveredAt?.ToString("dd.MM.yyyy HH:mm") ?? "-");
                     });
 
+                    if (deviceFrontPhoto is not null || deviceBackPhoto is not null)
+                    {
+                        column.Item().Element(Section).Text("Cihaz teslim fotoğrafları").Bold().FontSize(13);
+                        column.Item().Row(row =>
+                        {
+                            if (deviceFrontPhoto is not null)
+                            {
+                                row.RelativeItem().Column(photoColumn =>
+                                {
+                                    photoColumn.Item().Text("Ön yüz").Bold();
+                                    photoColumn.Item().PaddingTop(5).Height(180).Image(deviceFrontPhoto).FitArea();
+                                });
+                            }
+                            if (deviceBackPhoto is not null)
+                            {
+                                row.RelativeItem().Column(photoColumn =>
+                                {
+                                    photoColumn.Item().Text("Arka yüz").Bold();
+                                    photoColumn.Item().PaddingTop(5).Height(180).Image(deviceBackPhoto).FitArea();
+                                });
+                            }
+                        });
+                    }
                     if (!string.IsNullOrWhiteSpace(ticket.Notes))
                     {
                         column.Item().Element(Section).Text("Notlar").Bold().FontSize(13);
