@@ -1,4 +1,4 @@
-﻿using DeviceService.Core.Entities;
+using DeviceService.Core.Entities;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Net.Http.Headers;
@@ -60,6 +60,9 @@ public class ServiceTicketDetailItem : ServiceTicketListItem
     public decimal? EstimatedPrice { get; set; }
     public string? Notes { get; set; }
     public string? TrackingUrl { get; set; }
+    public string? DeliveryRecipientFullName { get; set; }
+    public DateTime? DeliveredAt { get; set; }
+    public bool HasDeliveryEvidence { get; set; }
     public bool EmailSent { get; set; }
     public string? EmailMessage { get; set; }
     public List<StatusHistoryItem> StatusHistories
@@ -547,6 +550,84 @@ public class ApiClient
         }
     }
 
+    public async Task<ServiceTicketDetailItem?> UploadDeliveryEvidenceAsync(
+        int ticketId,
+        string recipientFullName,
+        decimal? estimatedPrice,
+        string? notes,
+        Stream devicePhotoStream,
+        string devicePhotoFileName,
+        string devicePhotoContentType,
+        Stream identityDocumentPhotoStream,
+        string identityDocumentPhotoFileName,
+        string identityDocumentPhotoContentType)
+    {
+        ApplyAccessToken();
+        LastErrorMessage = string.Empty;
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            content.Add(new StringContent(recipientFullName), "recipientFullName");
+            if (estimatedPrice.HasValue)
+                content.Add(new StringContent(estimatedPrice.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)), "estimatedPrice");
+            if (!string.IsNullOrWhiteSpace(notes))
+                content.Add(new StringContent(notes), "notes");
+
+            var devicePhoto = new StreamContent(devicePhotoStream);
+            devicePhoto.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(devicePhotoContentType) ? "application/octet-stream" : devicePhotoContentType);
+            content.Add(devicePhoto, "devicePhoto", devicePhotoFileName);
+
+            var identityDocumentPhoto = new StreamContent(identityDocumentPhotoStream);
+            identityDocumentPhoto.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(identityDocumentPhotoContentType) ? "application/octet-stream" : identityDocumentPhotoContentType);
+            content.Add(identityDocumentPhoto, "identityDocumentPhoto", identityDocumentPhotoFileName);
+
+            using var response = await _httpClient.PostAsync($"api/ServiceTickets/{ticketId}/delivery-evidence", content);
+            if (!response.IsSuccessStatusCode)
+            {
+                LastErrorMessage = await ReadErrorAsync(response, "Teslim kanıtları kaydedilemedi.");
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync<ServiceTicketDetailItem>();
+        }
+        catch (HttpRequestException)
+        {
+            LastErrorMessage = "Teslim kanıtı isteği API sunucusuna ulaştırılamadı.";
+            return null;
+        }
+        catch (TaskCanceledException)
+        {
+            LastErrorMessage = "Teslim kanıtı isteği zaman aşımına uğradı.";
+            return null;
+        }
+    }
+
+    public async Task<byte[]?> DownloadServiceTicketPdfAsync(int ticketId)
+    {
+        ApplyAccessToken();
+        LastErrorMessage = string.Empty;
+        try
+        {
+            using var response = await _httpClient.GetAsync($"api/ServiceTickets/{ticketId}/pdf");
+            if (!response.IsSuccessStatusCode)
+            {
+                LastErrorMessage = await ReadErrorAsync(response, "Servis fişi PDF olarak hazırlanamadı.");
+                return null;
+            }
+
+            return await response.Content.ReadAsByteArrayAsync();
+        }
+        catch (HttpRequestException)
+        {
+            LastErrorMessage = "PDF isteği API sunucusuna ulaştırılamadı.";
+            return null;
+        }
+        catch (TaskCanceledException)
+        {
+            LastErrorMessage = "PDF isteği zaman aşımına uğradı.";
+            return null;
+        }
+    }
     // Email
     public async Task<EmailSendResult?> SendEmailAsync(int ticketId)
     {

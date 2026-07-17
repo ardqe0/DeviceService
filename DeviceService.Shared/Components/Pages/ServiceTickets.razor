@@ -1,5 +1,6 @@
 @page "/servis-fisleri"
 @using System.Globalization
+@inject IJSRuntime Js
 
 <PageTitle>Servis Fişleri</PageTitle>
 
@@ -148,13 +149,48 @@ else
                         <div class="span-2"><label>Notlar</label><textarea @bind="detailNotes"></textarea></div>
                         <div class="span-2"><label>Takip bağlantısı</label><input value="@(detail.TrackingUrl ?? "Takip bağlantısı oluşturuluyor.")" readonly /></div>
                     </div>
-                    @if (!string.IsNullOrWhiteSpace(detailMessage))
+                    @if (detailStatus == DeliveredStatus)
+                    {
+                        <section class="delivery-evidence-section">
+                            <div>
+                                <h3>Teslim kanıtı</h3>
+                                <p class="help-text">Teslim alan kişinin adı, cihaz fotoğrafı ve kimlik belgesi fotoğrafı zorunludur.</p>
+                            </div>
+                            @if (detail.HasDeliveryEvidence)
+                            {
+                                <p class="delivery-evidence-saved">
+                                    Teslim kanıtları kaydedildi.
+                                    @if (!string.IsNullOrWhiteSpace(detail.DeliveryRecipientFullName))
+                                    {
+                                        <span>Teslim alan: <strong>@detail.DeliveryRecipientFullName</strong></span>
+                                    }
+                                    @if (detail.DeliveredAt.HasValue)
+                                    {
+                                        <span>Teslim: @detail.DeliveredAt.Value.ToString("dd.MM.yyyy HH:mm")</span>
+                                    }
+                                </p>
+                            }
+                            else
+                            {
+                                <div class="form-grid delivery-evidence-grid">
+                                    <div class="span-2"><label>Teslim alan kişi adı soyadı</label><input @bind="deliveryRecipientFullName" /></div>
+                                    <div><label>Cihaz fotoğrafı</label><InputFile OnChange="SetDeliveryDevicePhoto" accept="image/jpeg,image/png,image/webp" /></div>
+                                    <div><label>Kimlik belgesi fotoğrafı</label><InputFile OnChange="SetDeliveryIdentityPhoto" accept="image/jpeg,image/png,image/webp" /></div>
+                                </div>
+                            }
+                        </section>
+                    }                    @if (!string.IsNullOrWhiteSpace(detailMessage))
                     {
                         <p class="message success">@detailMessage</p>
                     }
                     <div class="modal-actions split">
-                        <button type="button" class="button teal" @onclick="SendEmail">E-postayı Yeniden Gönder</button>
-                        <button type="button" class="button primary" @onclick="SaveDetail">Değişiklikleri Kaydet</button>
+                        <div class="detail-secondary-actions">
+                            <button type="button" class="button secondary" @onclick="DownloadPdf">PDF Olarak İndir</button>
+                            <button type="button" class="button teal" @onclick="SendEmail">E-postayı Yeniden Gönder</button>
+                        </div>
+                        <button type="button" class="button primary" @onclick="SaveDetail">
+                            @(detailStatus == DeliveredStatus && !detail.HasDeliveryEvidence ? "Teslim Kanıtlarını Kaydet" : "Değişiklikleri Kaydet")
+                        </button>
                     </div>                </div>
                 <div class="timeline compact-timeline">
                     <h3>Durum Geçmişi</h3>
@@ -188,6 +224,7 @@ else
     private string filterMode = "all";
     private int statusFilter = -1;
     private int selectedCustomerId;
+    private const int DeliveredStatus = 6;
     private int detailStatus;
     private string newTicketNumber = string.Empty;
     private DateTime createdDate = DateTime.Today;
@@ -196,6 +233,9 @@ else
     private string detailPrice = string.Empty;
     private string detailNotes = string.Empty;
     private string detailMessage = string.Empty;
+    private string deliveryRecipientFullName = string.Empty;
+    private IBrowserFile? deliveryDevicePhoto;
+    private IBrowserFile? deliveryIdentityPhoto;
     private string operationMessage = string.Empty;
     private bool operationSuccess;
     private CreateServiceTicketRequest createRequest = new();
@@ -319,6 +359,9 @@ else
         detailStatus = detail.StatusValue;
         detailPrice = detail.EstimatedPrice?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
         detailNotes = detail.Notes ?? string.Empty;
+        deliveryRecipientFullName = detail.DeliveryRecipientFullName ?? string.Empty;
+        deliveryDevicePhoto = null;
+        deliveryIdentityPhoto = null;
     }
 
     private void CloseDetail()
@@ -328,27 +371,27 @@ else
     private async Task SaveDetail()
     {
         if (detail is null)
+            return;
+
+        if (!TryGetDetailPrice(out var price))
+            return;
+
+        if (detailStatus == DeliveredStatus && !detail.HasDeliveryEvidence)
         {
+            await SaveDeliveryEvidence(price);
             return;
         }
 
-        decimal? price = null;
-        if (!string.IsNullOrWhiteSpace(detailPrice))
+        var updated = await Api.UpdateServiceTicketAsync(detail.Id, new UpdateServiceTicketRequest
         {
-            if (!decimal.TryParse(detailPrice, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed))
-            {
-                detailMessage = "Tahmini ücret geçerli bir sayı olmalıdır.";
-                return;
-            }
-
-            price = parsed;
-        }
-
-        var updated = await Api.UpdateServiceTicketAsync(detail.Id, new UpdateServiceTicketRequest { Status = detailStatus, EstimatedPrice = price, Notes = detailNotes });
+            Status = detailStatus,
+            EstimatedPrice = price,
+            Notes = detailNotes
+        });
 
         if (updated is null)
         {
-            detailMessage = "Değişiklikler kaydedilemedi.";
+            detailMessage = string.IsNullOrWhiteSpace(Api.LastErrorMessage) ? "Değişiklikler kaydedilemedi." : Api.LastErrorMessage;
             return;
         }
 
@@ -356,6 +399,79 @@ else
         detailStatus = updated.StatusValue;
         detailMessage = "Değişiklikler kaydedildi.";
         await LoadTickets();
+    }
+
+    private bool TryGetDetailPrice(out decimal? price)
+    {
+        price = null;
+        if (string.IsNullOrWhiteSpace(detailPrice))
+            return true;
+
+        if (!decimal.TryParse(detailPrice, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed))
+        {
+            detailMessage = "Tahmini ücret geçerli bir sayı olmalıdır.";
+            return false;
+        }
+
+        price = parsed;
+        return true;
+    }
+
+    private void SetDeliveryDevicePhoto(InputFileChangeEventArgs eventArgs) => deliveryDevicePhoto = eventArgs.File;
+
+    private void SetDeliveryIdentityPhoto(InputFileChangeEventArgs eventArgs) => deliveryIdentityPhoto = eventArgs.File;
+
+    private async Task SaveDeliveryEvidence(decimal? price)
+    {
+        if (detail is null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(deliveryRecipientFullName) || deliveryDevicePhoto is null || deliveryIdentityPhoto is null)
+        {
+            detailMessage = "Teslim alan kişi, cihaz fotoğrafı ve kimlik belgesi fotoğrafı zorunludur.";
+            return;
+        }
+
+        await using var deviceStream = deliveryDevicePhoto.OpenReadStream(5 * 1024 * 1024);
+        await using var identityStream = deliveryIdentityPhoto.OpenReadStream(5 * 1024 * 1024);
+        var updated = await Api.UploadDeliveryEvidenceAsync(
+            detail.Id,
+            deliveryRecipientFullName,
+            price,
+            detailNotes,
+            deviceStream,
+            deliveryDevicePhoto.Name,
+            deliveryDevicePhoto.ContentType,
+            identityStream,
+            deliveryIdentityPhoto.Name,
+            deliveryIdentityPhoto.ContentType);
+
+        if (updated is null)
+        {
+            detailMessage = string.IsNullOrWhiteSpace(Api.LastErrorMessage) ? "Teslim kanıtları kaydedilemedi." : Api.LastErrorMessage;
+            return;
+        }
+
+        detail = updated;
+        detailStatus = updated.StatusValue;
+        detailMessage = "Teslim kanıtları kaydedildi.";
+        await LoadTickets();
+    }
+
+    private async Task DownloadPdf()
+    {
+        if (detail is null)
+            return;
+
+        var pdf = await Api.DownloadServiceTicketPdfAsync(detail.Id);
+        if (pdf is null)
+        {
+            detailMessage = string.IsNullOrWhiteSpace(Api.LastErrorMessage) ? "Servis fişi PDF olarak hazırlanamadı." : Api.LastErrorMessage;
+            return;
+        }
+
+        await Js.InvokeVoidAsync("deviceServiceFiles.downloadPdf", $"{detail.TicketNumber}-servis-fisi.pdf", Convert.ToBase64String(pdf));
+        detailMessage = "Servis fişi PDF olarak indirildi.";
     }
     private async Task SendEmail()
     {

@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Security.Claims;
 using DeviceService.Data;
 using Microsoft.EntityFrameworkCore;
@@ -11,6 +11,8 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+
+QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
 var builder = WebApplication.CreateBuilder(args);
 var trustForwardedHeaders = builder.Configuration.GetValue<bool>("ReverseProxy:TrustForwardedHeaders");

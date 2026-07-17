@@ -14,10 +14,22 @@ public class ServiceTicketDetailDto : ServiceTicketDto
     public decimal? EstimatedPrice { get; set; }
     public string? Notes { get; set; }
     public string? TrackingUrl { get; set; }
+    public string? DeliveryRecipientFullName { get; set; }
+    public DateTime? DeliveredAt { get; set; }
+    public bool HasDeliveryEvidence { get; set; }
     public bool EmailSent { get; set; }
     public string? EmailMessage { get; set; }
     public List<StatusHistoryDto>
  StatusHistories { get; set; } = new();
+}
+
+public class DeliveryEvidenceRequestDto
+{
+    public string RecipientFullName { get; set; } = string.Empty;
+    public decimal? EstimatedPrice { get; set; }
+    public string? Notes { get; set; }
+    public IFormFile? DevicePhoto { get; set; }
+    public IFormFile? IdentityDocumentPhoto { get; set; }
 }
 
 public class StatusHistoryDto

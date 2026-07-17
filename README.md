@@ -1,4 +1,4 @@
-﻿# DeviceService Servis Takip Sistemi
+# DeviceService Servis Takip Sistemi
 
 Telefon ve elektronik cihaz servisleri için geliştirilmiş bir servis yönetim uygulamasıdır. Çözüm; ASP.NET Core Web API, SQL Server/LocalDB, Entity Framework Core, Blazor Web ve .NET MAUI Blazor Hybrid istemcilerinden oluşur.
 
@@ -9,6 +9,8 @@ Telefon ve elektronik cihaz servisleri için geliştirilmiş bir servis yönetim
 - Müşteri, cihaz ve servis fişi yönetimi
 - Otomatik servis fişi numarası ve güvenli takip kodu oluşturma
 - Durum geçmişi, not ve tahmini ücret takibi
+- Teslimde teslim alan kişi adı, cihaz fotoğrafı ve kimlik belgesi fotoğrafı ile teslim kanıtı
+- Yetkili servis için PDF servis fişi indirme
 - Takip doğrulaması için telefon numarasının son dört hanesi
 - Hatalı takip doğrulamasında deneme sınırı ve geçici kilit
 - Servis fişi ve şifre sıfırlama e-postaları için SMTP desteği
@@ -132,6 +134,8 @@ DeviceService.Maui\bin\Release\net10.0-android\publish\
 - Telefon numarasının tamamı takip istemcisine gönderilmez.
 - Şifre değişimi ve "Tüm Oturumları Kapat" işlemi eski JWT oturumlarını geçersiz kılar.
 - SMTP ayarları yapılandırılmadıysa e-posta gönderimi başarısız olur; servis fişi kaydı korunur.
+- Teslim kanıtı görselleri `DeviceService.API/App_Data/DeliveryEvidence` altında tutulur; uygulama tarafından public olarak yayınlanmaz ve Git tarafından yok sayılır.
+- "Teslim Edildi" durumuna geçmek için teslim alan kişi adı ile iki teslim görseli API tarafında da zorunludur.
 
 ## GitHub'a Yüklemeden Önce
 

@@ -7,6 +7,9 @@ using DeviceService.Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 
 namespace DeviceService.API.Controllers;
 
@@ -23,6 +26,7 @@ public class ServiceTicketsController : ControllerBase
     private readonly DeviceServiceDbContext _context;
     private readonly IConfiguration _configuration;
     private readonly ILogger<ServiceTicketsController> _logger;
+    private readonly IWebHostEnvironment _environment;
 
     public ServiceTicketsController(
         IServiceTicketService ticketService,
@@ -32,7 +36,8 @@ public class ServiceTicketsController : ControllerBase
         IEmailSender emailSender,
         DeviceServiceDbContext context,
         IConfiguration configuration,
-        ILogger<ServiceTicketsController> logger)
+        ILogger<ServiceTicketsController> logger,
+        IWebHostEnvironment environment)
     {
         _ticketService = ticketService;
         _deviceService = deviceService;
@@ -42,6 +47,7 @@ public class ServiceTicketsController : ControllerBase
         _context = context;
         _configuration = configuration;
         _logger = logger;
+        _environment = environment;
     }
 
     [HttpGet]
@@ -185,6 +191,14 @@ public class ServiceTicketsController : ControllerBase
             return NotFound();
 
 
+        if ((ServiceTicketStatus)request.Status == ServiceTicketStatus.TeslimEdildi &&
+            (string.IsNullOrWhiteSpace(existingTicket.DeliveryDevicePhotoPath) ||
+             string.IsNullOrWhiteSpace(existingTicket.DeliveryIdentityDocumentPhotoPath) ||
+             string.IsNullOrWhiteSpace(existingTicket.DeliveryRecipientFullName)))
+        {
+            return BadRequest(new { message = "Teslim işlemi için teslim alan kişi, cihaz fotoğrafı ve kimlik belgesi fotoğrafı zorunludur." });
+        }
+
         try
         {
             var ticket = await _ticketService.UpdateTicketDetailsAsync(
@@ -229,6 +243,217 @@ public class ServiceTicketsController : ControllerBase
             Message = delivery.Message
         });
     }
+    [HttpPost("{id}/delivery-evidence")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<IActionResult> SaveDeliveryEvidence(int id, [FromForm] DeliveryEvidenceRequestDto request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.RecipientFullName))
+            return BadRequest(new { message = "Teslim alan kişinin adı soyadı zorunludur." });
+
+        var validationError = await ValidateDeliveryImagesAsync(request.DevicePhoto, request.IdentityDocumentPhoto, cancellationToken);
+        if (validationError is not null)
+            return BadRequest(new { message = validationError });
+
+        var ticket = await _ticketService.GetTicketByIdAsync(id);
+        if (ticket is null)
+            return NotFound();
+
+        string? devicePhotoPath = null;
+        string? identityDocumentPhotoPath = null;
+        try
+        {
+            devicePhotoPath = await SaveDeliveryImageAsync(request.DevicePhoto!, "cihaz", cancellationToken);
+            identityDocumentPhotoPath = await SaveDeliveryImageAsync(request.IdentityDocumentPhoto!, "kimlik", cancellationToken);
+
+            ticket.DeliveryRecipientFullName = request.RecipientFullName.Trim();
+            ticket.DeliveryDevicePhotoPath = devicePhotoPath;
+            ticket.DeliveryIdentityDocumentPhotoPath = identityDocumentPhotoPath;
+            ticket.DeliveredAt = DateTime.Now;
+
+            var updatedTicket = await _ticketService.UpdateTicketDetailsAsync(
+                id,
+                ServiceTicketStatus.TeslimEdildi,
+                request.Notes,
+                request.EstimatedPrice);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation("Teslim kanıtları kaydedildi. Servis fişi: {TicketNumber}", FormatTicketNumber(id));
+            return Ok(ToDetailDto(updatedTicket));
+        }
+        catch (Exception ex)
+        {
+            DeleteEvidenceFile(devicePhotoPath);
+            DeleteEvidenceFile(identityDocumentPhotoPath);
+            _logger.LogError(ex, "Teslim kanıtları kaydedilemedi. Servis fişi: {TicketNumber}", FormatTicketNumber(id));
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Teslim kanıtları kaydedilemedi." });
+        }
+    }
+
+    [HttpGet("{id}/pdf")]
+    public async Task<IActionResult> DownloadPdf(int id)
+    {
+        var ticket = await _ticketService.GetTicketByIdAsync(id);
+        if (ticket is null)
+            return NotFound();
+
+        var pdf = CreateServiceTicketPdf(ticket);
+        return File(pdf, "application/pdf", $"{FormatTicketNumber(ticket.Id)}-servis-fisi.pdf");
+    }
+
+    private async Task<string?> ValidateDeliveryImagesAsync(
+        IFormFile? devicePhoto,
+        IFormFile? identityDocumentPhoto,
+        CancellationToken cancellationToken)
+    {
+        var deviceError = await ValidateImageAsync(devicePhoto, "Cihaz fotoğrafı", cancellationToken);
+        if (deviceError is not null)
+            return deviceError;
+
+        return await ValidateImageAsync(identityDocumentPhoto, "Kimlik belgesi fotoğrafı", cancellationToken);
+    }
+
+    private static async Task<string?> ValidateImageAsync(IFormFile? file, string fieldName, CancellationToken cancellationToken)
+    {
+        const long maximumFileSize = 5 * 1024 * 1024;
+        if (file is null || file.Length == 0)
+            return $"{fieldName} zorunludur.";
+        if (file.Length > maximumFileSize)
+            return $"{fieldName} en fazla 5 MB olabilir.";
+
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (extension is not ".jpg" and not ".jpeg" and not ".png" and not ".webp")
+            return $"{fieldName} JPG, PNG veya WEBP biçiminde olmalıdır.";
+
+        await using var stream = file.OpenReadStream();
+        var header = new byte[12];
+        var read = await stream.ReadAsync(header.AsMemory(0, header.Length), cancellationToken);
+        var isJpeg = read >= 3 && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF;
+        var isPng = read >= 8 && header.AsSpan(0, 8).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+        var isWebp = read >= 12 && header.AsSpan(0, 4).SequenceEqual("RIFF"u8) && header.AsSpan(8, 4).SequenceEqual("WEBP"u8);
+
+        return isJpeg || isPng || isWebp ? null : $"{fieldName} geçerli bir görsel dosyası değil.";
+    }
+
+    private async Task<string> SaveDeliveryImageAsync(IFormFile file, string label, CancellationToken cancellationToken)
+    {
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var relativePath = Path.Combine("App_Data", "DeliveryEvidence", $"{DateTime.UtcNow:yyyyMMddHHmmss}-{label}-{Guid.NewGuid():N}{extension}");
+        var absolutePath = Path.Combine(_environment.ContentRootPath, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(absolutePath)!);
+
+        await using var output = System.IO.File.Create(absolutePath);
+        await file.CopyToAsync(output, cancellationToken);
+        return relativePath;
+    }
+
+    private void DeleteEvidenceFile(string? relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+            return;
+
+        var absolutePath = Path.Combine(_environment.ContentRootPath, relativePath);
+        if (System.IO.File.Exists(absolutePath))
+            System.IO.File.Delete(absolutePath);
+    }
+
+    private static byte[] CreateServiceTicketPdf(ServiceTicket ticket)
+    {
+        var customerName = ticket.Device?.Customer is null
+            ? "-"
+            : $"{ticket.Device.Customer.FirstName} {ticket.Device.Customer.LastName}".Trim();
+        var deviceName = $"{ticket.Device?.Brand} {ticket.Device?.Model}".Trim();
+        var statusHistory = ticket.StatusHistories.OrderBy(history => history.ChangedAt).ToList();
+
+        return Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(36);
+                page.DefaultTextStyle(style => style.FontSize(10));
+                page.Header().Row(row =>
+                {
+                    row.RelativeItem().Column(column =>
+                    {
+                        column.Item().Text("DeviceService").FontSize(20).Bold().FontColor(Colors.Blue.Darken2);
+                        column.Item().Text("Servis Fişi").FontSize(12).FontColor(Colors.Grey.Darken1);
+                    });
+                    row.ConstantItem(150).AlignRight().Column(column =>
+                    {
+                        column.Item().Text(FormatTicketNumber(ticket.Id)).FontSize(16).Bold();
+                        column.Item().Text($"Kayıt: {ticket.CreatedAt:dd.MM.yyyy HH:mm}").FontSize(9);
+                    });
+                });
+
+                page.Content().PaddingVertical(20).Column(column =>
+                {
+                    column.Spacing(12);
+                    column.Item().Element(Section).Text("Müşteri ve cihaz").Bold().FontSize(13);
+                    column.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(columns => { columns.RelativeColumn(); columns.RelativeColumn(); });
+                        AddCell(table, "Müşteri", customerName);
+                        AddCell(table, "Cihaz", deviceName);
+                        AddCell(table, "Seri no", ticket.Device?.SerialNumber ?? "-");
+                        AddCell(table, "Durum", GetStatusText(ticket.Status));
+                        AddCell(table, "Tahmini ücret", ticket.EstimatedPrice?.ToString("C", new System.Globalization.CultureInfo("tr-TR")) ?? "-");
+                        AddCell(table, "Teslim zamanı", ticket.DeliveredAt?.ToString("dd.MM.yyyy HH:mm") ?? "-");
+                    });
+
+                    if (!string.IsNullOrWhiteSpace(ticket.Notes))
+                    {
+                        column.Item().Element(Section).Text("Notlar").Bold().FontSize(13);
+                        column.Item().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(10).Text(ticket.Notes);
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(ticket.DeliveryRecipientFullName))
+                    {
+                        column.Item().Element(Section).Text("Teslim bilgisi").Bold().FontSize(13);
+                        column.Item().Text($"Teslim alan: {ticket.DeliveryRecipientFullName}");
+                        column.Item().Text("Cihaz ve kimlik belgesi görselleri güvenli teslim kanıtı olarak sistemde saklanır; PDF'e eklenmez.").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    }
+
+                    column.Item().Element(Section).Text("Durum geçmişi").Bold().FontSize(13);
+                    column.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(columns => { columns.ConstantColumn(110); columns.RelativeColumn(); columns.RelativeColumn(); });
+                        table.Header(header =>
+                        {
+                            header.Cell().Element(HeaderCell).Text("Tarih");
+                            header.Cell().Element(HeaderCell).Text("Durum");
+                            header.Cell().Element(HeaderCell).Text("Not");
+                        });
+                        foreach (var history in statusHistory)
+                        {
+                            table.Cell().Element(BodyCell).Text(history.ChangedAt.ToString("dd.MM.yyyy HH:mm"));
+                            table.Cell().Element(BodyCell).Text(GetStatusText(history.Status));
+                            table.Cell().Element(BodyCell).Text(history.Notes ?? "-");
+                        }
+                    });
+                });
+
+                page.Footer().AlignCenter().DefaultTextStyle(style => style.FontSize(8).FontColor(Colors.Grey.Darken1)).Text(text =>
+                {
+                    text.Span("DeviceService - Servis fişi ");
+                    text.CurrentPageNumber();
+                    text.Span(" / ");
+                    text.TotalPages();
+                });
+            });
+        }).GeneratePdf();
+
+        static IContainer Section(IContainer container) => container.PaddingTop(4);
+        static IContainer HeaderCell(IContainer container) => container.Background(Colors.Blue.Lighten5).Padding(6).BorderBottom(1).BorderColor(Colors.Blue.Lighten2);
+        static IContainer BodyCell(IContainer container) => container.BorderBottom(1).BorderColor(Colors.Grey.Lighten2).PaddingVertical(6).PaddingHorizontal(4);
+        static void AddCell(TableDescriptor table, string label, string value)
+        {
+            table.Cell().Element(BodyCell).Column(column =>
+            {
+                column.Item().Text(label).FontSize(8).FontColor(Colors.Grey.Darken1);
+                column.Item().Text(value).Bold();
+            });
+        }
+    }
     private static ServiceTicketDto ToDto(ServiceTicket ticket)
     {
         return new ServiceTicketDto
@@ -263,6 +488,10 @@ public class ServiceTicketsController : ControllerBase
             EstimatedPrice = ticket.EstimatedPrice,
             Notes = ticket.Notes,
             TrackingUrl = ticket.TrackingLink == null ? null : BuildTrackingUrl(ticket.TrackingLink.Token),
+            DeliveryRecipientFullName = ticket.DeliveryRecipientFullName,
+            DeliveredAt = ticket.DeliveredAt,
+            HasDeliveryEvidence = !string.IsNullOrWhiteSpace(ticket.DeliveryDevicePhotoPath) &&
+                                  !string.IsNullOrWhiteSpace(ticket.DeliveryIdentityDocumentPhotoPath),
             StatusHistories = ticket.StatusHistories
                 .OrderBy(history => history.ChangedAt)
                 .Select(history => new StatusHistoryDto

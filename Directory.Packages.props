@@ -14,6 +14,7 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9" />
     <!-- Authentication & Identity -->
+    <PackageVersion Include="QuestPDF" Version="2026.7.1" />
     <PackageVersion Include="Rg.Plugins.Popup" Version="2.1.0" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.3.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />

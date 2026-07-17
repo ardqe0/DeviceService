@@ -1,4 +1,4 @@
-﻿:root { font-family: "Open Sans", "Segoe UI", sans-serif; color: #111827; background: #f6f8fb; font-synthesis: none; }
+:root { font-family: "Open Sans", "Segoe UI", sans-serif; color: #111827; background: #f6f8fb; font-synthesis: none; }
 * { box-sizing: border-box; }
 html, body, #app { margin: 0; min-height: 100%; }
 body { background: #f6f8fb; }
@@ -194,3 +194,12 @@ input[readonly] { background: #f1f5f9; color: #475569; }
 .danger-panel { border-color: #d88c8c; }
 .account-security-grid { align-items: start; }
 @media (max-width: 700px) { .session-warning { margin: 8px 12px 0; align-items: flex-start; } }
+.detail-secondary-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.delivery-evidence-section { margin-top: 18px; padding: 16px; border: 1px solid #bfdbfe; border-radius: 8px; background: #eff6ff; }
+.delivery-evidence-section h3 { margin: 0; font-size: 16px; }
+.delivery-evidence-grid { margin: 14px 0 0; }
+.delivery-evidence-grid input[type="file"] { padding: 8px; }
+.delivery-evidence-saved { display: grid; gap: 4px; margin: 14px 0 0; padding: 10px 12px; border-left: 3px solid #0f766e; background: #ecfdf5; color: #065f46; font-size: 13px; }
+.dark .delivery-evidence-section { border-color: #2563eb; background: #172554; }
+.dark .delivery-evidence-saved { background: #064e3b; color: #d1fae5; }
+@media (max-width: 540px) { .detail-secondary-actions { width: 100%; flex-direction: column; } .detail-secondary-actions .button { width: 100%; } }
