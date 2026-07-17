@@ -21,3 +21,4 @@ secrets.json
 publish/
 artifacts/
 .env
+DeviceService.API/App_Data/

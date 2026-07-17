@@ -1,4 +1,5 @@
-@page "/musteri-paneli"
+﻿@page "/musteri-paneli"
+@inject IJSRuntime Js
 
 <PageTitle>Hesabım</PageTitle>
 
@@ -30,6 +31,7 @@ else
         </div>
         <div class="welcome-actions">
             <button class="button primary" @onclick="GoHome">Ana Sayfaya Git</button>
+            <button class="button secondary" @onclick="GoToSecurity">Hesap Güvenliği</button>
             <button class="button secondary" @onclick="Logout">Çıkış Yap</button>
         </div>
     </section>
@@ -44,10 +46,16 @@ else
     </section>
 }
 
+@if (securityOpen)
+{
+    <AccountSecurityModal OnClose="CloseSecurity" />
+}
+
 @code {
     private AuthSession CurrentSession => AuthSession.Current;
     private global::DeviceService.Services.CustomerDashboard? dashboard;
     private bool loading = true;
+    private bool securityOpen;
 
     protected override async Task OnInitializedAsync()
     {
@@ -58,11 +66,14 @@ else
     }
 
     private void GoHome() => Navigation.NavigateTo("/");
+    private void GoToSecurity() => securityOpen = true;
+    private void CloseSecurity() => securityOpen = false;
 
-    private void Logout()
+    private async Task Logout()
     {
         Api.SetAccessToken(null);
         Session.End();
+        await Js.InvokeVoidAsync("localStorage.removeItem", "device-service-remembered-session");
         Navigation.NavigateTo("/");
     }
 }

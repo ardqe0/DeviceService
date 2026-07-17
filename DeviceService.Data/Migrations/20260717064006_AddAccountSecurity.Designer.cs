@@ -4,6 +4,7 @@ using DeviceService.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DeviceService.Data.Migrations
 {
     [DbContext(typeof(DeviceServiceDbContext))]
-    partial class DeviceServiceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260717064006_AddAccountSecurity")]
+    partial class AddAccountSecurity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -136,18 +139,6 @@ namespace DeviceService.Data.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<DateTime?>("DeliveredAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("DeliveryDevicePhotoPath")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("DeliveryIdentityDocumentPhotoPath")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("DeliveryRecipientFullName")
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("DeviceId")
                         .HasColumnType("int");

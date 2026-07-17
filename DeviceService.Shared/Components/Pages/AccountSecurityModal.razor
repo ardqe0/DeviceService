@@ -1,0 +1,118 @@
+﻿@using System.Text.Json
+@inject IJSRuntime Js
+
+@if (Session.IsAuthenticated)
+{
+    <div class="modal-backdrop" role="presentation" @onclick="Close">
+        <section class="modal wide account-security-modal" role="dialog" aria-modal="true" aria-labelledby="account-security-title" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <div>
+                    <h2 id="account-security-title">Hesap Güvenliği</h2>
+                    <p>Şifrenizi değiştirin veya tüm açık oturumlarınızı sonlandırın.</p>
+                </div>
+                <button type="button" class="icon-button" aria-label="Kapat" title="Kapat" @onclick="Close">×</button>
+            </div>
+
+            <div class="auth-grid account-security-grid">
+                <section class="panel">
+                    <h3>Şifre Değiştir</h3>
+                    <label>Mevcut şifre</label>
+                    <input type="password" @bind="currentPassword" autocomplete="current-password" />
+                    <label>Yeni şifre</label>
+                    <input type="password" @bind="newPassword" autocomplete="new-password" placeholder="En az 8 karakter, harf ve rakam" />
+                    <label>Yeni şifre tekrarı</label>
+                    <input type="password" @bind="confirmPassword" autocomplete="new-password" />
+                    <button type="button" class="button primary full" disabled="@busy" @onclick="ChangePassword">Şifreyi Değiştir</button>
+                    @if (!string.IsNullOrWhiteSpace(changeMessage))
+                    {
+                        <p class="message @(changeSucceeded ? "success" : "error")">@changeMessage</p>
+                    }
+                </section>
+
+                <section class="panel danger-panel">
+                    <h3>Tüm Cihazlardan Çıkış Yap</h3>
+                    <p>Bu işlem, şu an kullandığınız cihaz dahil tüm açık oturumları kapatır.</p>
+                    <button type="button" class="button secondary full" disabled="@busy" @onclick="LogoutAll">Tüm Oturumları Kapat</button>
+                    @if (!string.IsNullOrWhiteSpace(logoutMessage))
+                    {
+                        <p class="message error">@logoutMessage</p>
+                    }
+                </section>
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    private const string RememberedSessionKey = "device-service-remembered-session";
+    private string currentPassword = string.Empty;
+    private string newPassword = string.Empty;
+    private string confirmPassword = string.Empty;
+    private string changeMessage = string.Empty;
+    private string logoutMessage = string.Empty;
+    private bool changeSucceeded;
+    private bool busy;
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    private async Task ChangePassword()
+    {
+        changeMessage = string.Empty;
+        changeSucceeded = false;
+        if (newPassword != confirmPassword)
+        {
+            changeMessage = "Yeni şifre ve tekrarı aynı olmalıdır.";
+            return;
+        }
+
+        busy = true;
+        var response = await Api.ChangePasswordAsync(currentPassword, newPassword);
+        busy = false;
+        if (response is null)
+        {
+            changeMessage = Api.LastErrorMessage;
+            return;
+        }
+
+        Api.SetAccessToken(response.Token);
+        Session.Start(response);
+        try
+        {
+            var stored = await Js.InvokeAsync<string?>("localStorage.getItem", RememberedSessionKey);
+            if (!string.IsNullOrWhiteSpace(stored))
+                await Js.InvokeVoidAsync("localStorage.setItem", RememberedSessionKey, JsonSerializer.Serialize(response));
+        }
+        catch (JSException)
+        {
+            // Yerel depolama kullanılamıyorsa geçici oturum devam eder.
+        }
+
+        currentPassword = string.Empty;
+        newPassword = string.Empty;
+        confirmPassword = string.Empty;
+        changeSucceeded = true;
+        changeMessage = "Şifreniz değiştirildi. Diğer tüm cihazlardaki oturumlar kapatıldı.";
+    }
+
+    private async Task LogoutAll()
+    {
+        logoutMessage = string.Empty;
+        busy = true;
+        var succeeded = await Api.LogoutAllAsync();
+        busy = false;
+        if (!succeeded)
+        {
+            logoutMessage = Api.LastErrorMessage;
+            return;
+        }
+
+        Api.SetAccessToken(null);
+        Session.End();
+        try { await Js.InvokeVoidAsync("localStorage.removeItem", RememberedSessionKey); } catch (JSException) { }
+        await Close();
+        Navigation.NavigateTo("/");
+    }
+}

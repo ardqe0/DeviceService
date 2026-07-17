@@ -9,6 +9,10 @@ public class ServiceTicket
     public ServiceTicketStatus Status { get; set; } = ServiceTicketStatus.TeslimAlindi;
     public decimal? EstimatedPrice { get; set; }
     public string? Notes { get; set; }
+    public string? DeliveryRecipientFullName { get; set; }
+    public string? DeliveryDevicePhotoPath { get; set; }
+    public string? DeliveryIdentityDocumentPhotoPath { get; set; }
+    public DateTime? DeliveredAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime? UpdatedAt { get; set; }
 
